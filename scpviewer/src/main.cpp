@@ -23,10 +23,10 @@ reloadImage( SDL_Renderer* render, const char* path, const char* command ) {
 }
  
 int 
-main () {
+main ( int argc, char **argv ) {
 
 	if( argc != 3 ) {
-		printf( "Usage: %s [local image path] [refresh command]\n" );
+		printf( "Usage: %s [local image path] [refresh command]\n", *argv );
 	}
 	
 	int width =800, height =600;
