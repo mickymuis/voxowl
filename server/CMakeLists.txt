@@ -9,7 +9,6 @@ ${CUDA_NVCC_FLAGS};
 # Specify include directories
 include_directories(
     src
-    /usr/local/cuda/samples/common/inc
     )
 # Specify library paths
 link_directories()

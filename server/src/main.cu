@@ -1,6 +1,5 @@
-#include <cuda_runtime.h>
 #include <stdio.h>
-#include <helper_math.h>
+#include "platform.h"
 
 __global__ void
 simpleAdd( float4 *a, float4 *b, float4 *c, int size ) {
