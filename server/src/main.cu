@@ -1,40 +1,52 @@
 #include <stdio.h>
 #include "platform.h"
+#include "volumetric.h"
+
+#define float4 glm::vec4
+
+typedef Volumetric<float> VolFloat;
 
 __global__ void
-simpleAdd( float4 *a, float4 *b, float4 *c, int size ) {
+simpleAdd( VolFloat *a, VolFloat *b, VolFloat *c, int size ) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if( idx < size)
-        c[idx] = a[idx] + b[idx];
+       c->at(0,0,idx) = a->at(0,0,idx) + b->at(0,0,idx);
 }
 
 int 
 main( int argc, char **argv ) {
 
-    float4 a[1024];
-    float4 b[1024];
-    float4 c[1024];
+    VolFloat a(16,16,16,2.0f);
+    VolFloat b(16,16,16,1.0f);
+    VolFloat c(16,16,16);
 
-    for( int i =0; i < 1024; i++ ) { 
-        a[i].x = b[i].x = i / 1024;
-        a[i].y = b[i].y = i / 1024;
-        a[i].z = b[i].z = i / 1024;
-        a[i].w = b[i].w = i / 1024;
+    VolFloat *dev_a, *dev_b, *dev_c;
+
+    dev_a =VolFloat::createOnDevice( 16, 16, 16 );
+    dev_b =VolFloat::createOnDevice( 16, 16, 16 );
+    dev_c =VolFloat::createOnDevice( 16, 16, 16 );
+    
+    VolFloat::copyToDevice( dev_a, &a );
+    VolFloat::copyToDevice( dev_b, &b );
+
+    simpleAdd<<< 0, a.size() >>>( dev_a, dev_b, dev_c, a.size() );
+
+    VolFloat::copyFromDevice( &c, dev_c );
+
+    for( int x =0; x < c.xSize(); x++ )
+    {
+        for( int y =0; y < c.ySize(); y++ ) {
+            for( int z =0; z < c.zSize(); z++ ) {
+                printf( "%f ", c.at(x,y,z) );
+            }
+            printf( "\n" );
+        }
+        printf( "\n" );
     }
 
-    float4 *dev_a, *dev_b, *dev_c;
-    cudaMalloc( &dev_a, 1024 * sizeof( float4 ) );
-    cudaMalloc( &dev_b, 1024 * sizeof( float4 ) );
-    cudaMalloc( &dev_c, 1024 * sizeof( float4 ) );
-    cudaMemcpy( dev_a, a, 1024 * sizeof( float4 ), cudaMemcpyHostToDevice );
-    cudaMemcpy( dev_b, b, 1024 * sizeof( float4 ), cudaMemcpyHostToDevice );
-
-    simpleAdd<<< 0, 1024 >>>( dev_a, dev_b, dev_c, 1024 );
-
-    cudaMemcpy( c, dev_c, 1024 * sizeof( float4 ), cudaMemcpyDeviceToHost );
-
-    for( int i =0; i < 1024; i++ )
-        printf( "%f, %f, %f, %f\n", c[i].x, c[i].y, c[i].z, c[i].w );
+   VolFloat::deleteFromDevice( dev_a );
+   VolFloat::deleteFromDevice( dev_b );
+   VolFloat::deleteFromDevice( dev_c );
 
    return 0;
 
