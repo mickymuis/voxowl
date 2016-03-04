@@ -2,6 +2,7 @@
 #define VOLUMETRIC_H
 
 #include "platform.h"
+#include "shadow_macro.h"
 
 template<typename T>
 class Volumetric {

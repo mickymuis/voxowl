@@ -18,6 +18,7 @@ cuda_add_executable(
     voxowl
     src/main.cu
     src/framebuffer.cu
+    src/bmp.cu
     )
 # For linking ...
 # Specify target & libraries to link it with
