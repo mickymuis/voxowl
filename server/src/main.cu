@@ -51,7 +51,7 @@ void menger( voxel* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
                     for( uint32_t i = offs.x; i < offs.x + step; i++ )
                         for( uint32_t j = offs.y; j < offs.y + step; j++ )
                             for( uint32_t k = offs.z; k < offs.z + step; k++ )
-                                voxel3d( V, size, glm::ivec3( i, j, k ))->a =0.0f;
+                                voxel3d( V, size, glm::ivec3( i, j, k ))->r =1.0f;
                 }
                 // corner element, expand recursively
                 else
@@ -74,18 +74,26 @@ makeSponge( voxel* V, glm::ivec3 size ) {
 __device__ __host__
 glm::vec3
 voxelIndexToCoord( glm::ivec3 size, glm::ivec3 pos ) {
-    int largest = size.x > size.y ? size.x : size.y;
-    largest = largest > size.z ? largest : size.z;
+    int largest = max( size.x, max( size.y, size.z ) );
     return glm::vec3( 
         (float)pos.x/(float)largest,
         (float)pos.y/(float)largest,
         (float)pos.z/(float)largest );
 }
 
+glm::ivec3
+voxelCoordToIndex( glm::ivec3 size, glm::vec3 v ) {
+    int largest = max( size.x, max( size.y, size.z ) );
+    printf( "%d, v.x+0.5f %f, product %d\n", largest, v.x+0.5f, (int)((v.x+0.5f)*(float)largest));
+    return glm::ivec3(
+        (int)((v.x+0.5f)*(float)largest),
+        (int)((v.y+0.5f)*(float)largest),
+        (int)((v.z+0.5f)*(float)largest) );
+}
+
 box
 voxelSizeToAABB( glm::ivec3 size ) {
-    int largest = size.x > size.y ? size.x : size.y;
-    largest = largest > size.z ? largest : size.z;
+    int largest = max( size.x, max( size.y, size.z ) );
     largest *=2;
     box b;
     b.max = glm::vec3 (
@@ -97,7 +105,7 @@ voxelSizeToAABB( glm::ivec3 size ) {
 }
 
 bool
-rayAABBIntersect( const ray &r, const box& b ) {
+rayAABBIntersect( const ray &r, const box& b, double& tmin, double& tmax ) {
     glm::vec3 n_inv = glm::vec3( 
         1.f / r.direction.x,
         1.f / r.direction.y,
@@ -105,8 +113,8 @@ rayAABBIntersect( const ray &r, const box& b ) {
     double tx1 = (b.min.x - r.origin.x)*n_inv.x;
     double tx2 = (b.max.x - r.origin.x)*n_inv.x;
  
-    double tmin = min(tx1, tx2);
-    double tmax = max(tx1, tx2);
+    tmin = min(tx1, tx2);
+    tmax = max(tx1, tx2);
  
     double ty1 = (b.min.y - r.origin.y)*n_inv.y;
     double ty2 = (b.max.y - r.origin.y)*n_inv.y;
@@ -125,9 +133,18 @@ rayAABBIntersect( const ray &r, const box& b ) {
 
 glm::vec4
 raycast( voxel* V, glm::ivec3 size, const ray& r ) {
-    if( rayAABBIntersect( r, voxelSizeToAABB( size ) ) )
-        return glm::vec4( 1.0, 0.0, 0.0, 1.0 );
-    return glm::vec4( 0.0, 0.0, 0.3, 1.0 );
+    double tmin, tmax;
+    if( !rayAABBIntersect( r, voxelSizeToAABB( size ), tmin, tmax ) )
+        return glm::vec4( 0.0, 0.0, 0.0, 1.0 );
+
+    glm::vec3 rayEntry = r.origin + r.direction * (float)max( 0.0, tmin );
+    glm::vec3 rayExit = r.origin + r.direction * (float)tmax;
+
+    glm::ivec3 entry =voxelCoordToIndex( size, rayEntry );
+    printf( "%d, %d, %d\n", entry.x, entry.y, entry.z );
+    glm::vec4 color =*voxel3d( V, size, entry );
+
+    return color;
 }
 
 int 
@@ -150,7 +167,7 @@ main( int argc, char **argv ) {
     glm::mat4 mat_view =glm::lookAt( viewpoint, target, up );
 
     // We assume a symmetric projection matrix
-    glm::mat4 mat_proj =glm::perspective( 40.f, (float)width/height, near, 200.f );
+    glm::mat4 mat_proj =glm::perspective( 30.f, (float)width/height, near, 200.f );
     const float right =near / mat_proj[0][0];
     const float top =near / mat_proj[1][1];
     const float left =-right, bottom =-top;
