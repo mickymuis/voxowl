@@ -20,6 +20,16 @@ typedef struct {
 
 typedef glm::vec4 voxel;
 
+void
+printVec( glm::vec3 v ) {
+    printf( "vec3: (%f, %f, %f)\n", v.x, v.y, v.z );
+}
+
+void printVec( glm::ivec3 v ) {
+    printf( "ivec3: (%d, %d, %d)\n", v.x, v.y, v.z );
+}
+
+
 __device__ __host__
 voxel* 
 voxel3d( voxel* V, glm::ivec3 size, glm::ivec3 pos ) {
@@ -51,7 +61,7 @@ void menger( voxel* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
                     for( uint32_t i = offs.x; i < offs.x + step; i++ )
                         for( uint32_t j = offs.y; j < offs.y + step; j++ )
                             for( uint32_t k = offs.z; k < offs.z + step; k++ )
-                                voxel3d( V, size, glm::ivec3( i, j, k ))->r =1.0f;
+                                voxel3d( V, size, glm::ivec3( i, j, k ))->a =0.0f;
                 }
                 // corner element, expand recursively
                 else
@@ -62,33 +72,44 @@ void menger( voxel* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
 void 
 makeSponge( voxel* V, glm::ivec3 size ) {
 
-    for( uint32_t i=0; i < size.x * size.y * size.z; i++ ) {
-            V[i].r = 0.1f;
-            V[i].g = 0.8f;
-            V[i].b = 0.7f;
-            V[i].a = 1.0f;
-    }
+    for( uint32_t x=0; x < size.x; x++ )
+        for( uint32_t y=0; y < size.y; y++ )
+            for( uint32_t z=0; z < size.z; z++ ) {
+                (*voxel3d(V,size,glm::ivec3(x,y,z))).r = (float)x / (float)(size.x-1);
+                (*voxel3d(V,size,glm::ivec3(x,y,z))).g = (float)y / (float)(size.y-1);
+                (*voxel3d(V,size,glm::ivec3(x,y,z))).b = (float)z / (float)(size.z-1);
+                (*voxel3d(V,size,glm::ivec3(x,y,z))).a = 1.0f;
+            }
+   
     menger( V, size, size, glm::ivec3(0) );
 }
 
 __device__ __host__
 glm::vec3
 voxelIndexToCoord( glm::ivec3 size, glm::ivec3 pos ) {
-    int largest = max( size.x, max( size.y, size.z ) );
+    int largest = max( size.x, max( size.y, size.z ) )-1;
     return glm::vec3( 
-        (float)pos.x/(float)largest,
-        (float)pos.y/(float)largest,
-        (float)pos.z/(float)largest );
+        (float)pos.x/(float)largest-.5f,
+        (float)pos.y/(float)largest-.5f,
+        (float)pos.z/(float)largest-.5f );
 }
 
 glm::ivec3
 voxelCoordToIndex( glm::ivec3 size, glm::vec3 v ) {
-    int largest = max( size.x, max( size.y, size.z ) );
-    printf( "%d, v.x+0.5f %f, product %d\n", largest, v.x+0.5f, (int)((v.x+0.5f)*(float)largest));
+    int largest = max( size.x, max( size.y, size.z ) )-1;
     return glm::ivec3(
-        (int)((v.x+0.5f)*(float)largest),
-        (int)((v.y+0.5f)*(float)largest),
-        (int)((v.z+0.5f)*(float)largest) );
+        (int)round((v.x+0.5f)*(float)largest),
+        (int)round((v.y+0.5f)*(float)largest),
+        (int)round((v.z+0.5f)*(float)largest) );
+}
+
+glm::vec3
+voxelCoordToIndexf( glm::ivec3 size, glm::vec3 v ) {
+    int largest = max( size.x, max( size.y, size.z ) )-1;
+    return glm::vec3(
+        (v.x+0.5f)*(float)largest,
+        (v.y+0.5f)*(float)largest,
+        (v.z+0.5f)*(float)largest );
 }
 
 box
@@ -96,11 +117,11 @@ voxelSizeToAABB( glm::ivec3 size ) {
     int largest = max( size.x, max( size.y, size.z ) );
     largest *=2;
     box b;
-    b.max = glm::vec3 (
+    b.min = -glm::vec3 (
         (float)size.x / (float)largest,
         (float)size.y / (float)largest,
         (float)size.z / (float)largest );
-    b.min =-b.max;
+    b.max =-b.min - glm::vec3(0.001) ;
     return b;
 }
 
@@ -131,18 +152,109 @@ rayAABBIntersect( const ray &r, const box& b, double& tmin, double& tmax ) {
     return tmax >= tmin;
 }
 
+glm::vec3
+diffDistance( glm::vec3 s, glm::vec3 ds ) {
+    glm::vec3 diff;
+    for( int i =0; i < 3; i++ ) {
+        float is;
+        if( s[i] < 0.f )
+            is = s[i] - floor( -1.f - s[i] );
+        else
+            is = s[i] - floor( s[i] );
+
+        if ( ds[i] > 0.f )
+            diff[i] = (1.f-is) / ds[i];
+        else
+            diff[i] = is / (-ds[i]);
+    }
+    return diff;
+}
+
 glm::vec4
 raycast( voxel* V, glm::ivec3 size, const ray& r ) {
     double tmin, tmax;
     if( !rayAABBIntersect( r, voxelSizeToAABB( size ), tmin, tmax ) )
         return glm::vec4( 0.0, 0.0, 0.0, 1.0 );
+//    else
+//      return glm::vec4( 1.0, 0.0, 0.0, 1.0 );
 
     glm::vec3 rayEntry = r.origin + r.direction * (float)max( 0.0, tmin );
     glm::vec3 rayExit = r.origin + r.direction * (float)tmax;
+    
+    int side;
+    if( fabs(rayEntry.x) > fabs(rayEntry.z) ) {
+        if( fabs( rayEntry.x ) > fabs( rayEntry.y ) )
+            side = 0;
+        else
+            side = 1;
+    }
+    else if( fabs( rayEntry.y ) > fabs( rayEntry.z ) )
+        side = 1;
+    else
+        side = 2;
 
-    glm::ivec3 entry =voxelCoordToIndex( size, rayEntry );
-    printf( "%d, %d, %d\n", entry.x, entry.y, entry.z );
-    glm::vec4 color =*voxel3d( V, size, entry );
+    glm::vec4 color( 0.f, 0.f, 0.f, 0.f );
+
+//    ray r0;
+//    r0.origin =(r.origin + glm::vec3(0.499)) * glm::vec3(size);
+//    r0.direction =(r.direction + glm::vec3(0.499)) * glm::vec3(size);
+    rayEntry =(rayEntry + glm::vec3(0.5)) * glm::vec3(size);
+
+//    printVec( rayEntry );
+    glm::ivec3 index = glm::clamp( 
+        glm::ivec3( glm::floor( rayEntry ) ) ,
+        glm::ivec3( 0 ),
+        glm::ivec3( size.x, size.y, size.z ) );
+
+//    color =*voxel3d( V, size, index );
+//    return color;
+
+    //glm::ivec3 index =voxelCoordToIndex( size, rayEntry );
+//    printVec( index ); 
+//    printf( "Voxel@ %d, %d, %d\n", entry.x, entry.y, entry.z );
+//    glm::vec4 color =*voxel3d( V, size, entry );
+
+    glm::ivec3 step = glm::sign( r.direction );
+
+    glm::vec3 deltaDist =glm::abs( glm::vec3( glm::length( r.direction ) ) / r.direction );
+
+    glm::vec3 sideDist = ( sign( r.direction ) * (glm::vec3(index) - rayEntry)
+                        + (sign( r.direction ) * 0.5f ) + 0.5f ) * deltaDist;
+
+//    glm::vec3 sideDist = diffDistance( rayEntry, r.direction );
+//    glm::vec3 sideDist = (sign( r.direction ) * (voxelCoordToIndexf( size, rayEntry ) - glm::vec3(index))) / glm::vec3(size);
+//    printVec( sideDist );
+//    glm::vec3 sideDist = (sign(r.direction) * (voxelIndexToCoord( size,index) - r.origin) ) * deltaDist;
+
+//    glm::vec3 sideDist = sign(r.direction) * deltaDist;
+
+  //  glm::vec3 sideDist =( rayEntry - voxelIndexToCoord( size, index + step ) ) * glm::vec3(step) * deltaDist;
+
+    while(1) {
+
+        if( index[side] < 0 || index[side] >= size[side] )
+            break;
+        
+        glm::vec4 vox =*voxel3d( V, size, index );
+        color =vox;
+
+        color.r *= (3-side)/3.f;
+        color.g *= (3-side)/3.f;
+        color.b *= (3-side)/3.f;
+
+        if( vox.a == 1.f )
+            break;
+
+        side =0;
+        for( int i =0; i < 3; i++ ) 
+            if( sideDist[side] > sideDist[i] )
+                side =i;
+
+        sideDist[side] += deltaDist[side];
+        index[side] += step[side];
+
+
+    }
 
     return color;
 }
@@ -151,30 +263,32 @@ int
 main( int argc, char **argv ) {
 
     // Make a test sponge V of size L
-    const uint32_t L =81;
-    const int width =800;
-    const int height =600;
+    const uint32_t L =243;
+    const int width =1024;
+    const int height =768;
     const glm::ivec3 size( L, L, L );
     voxel* V = (voxel*)malloc( sizeof( voxel ) * L * L * L );
     makeSponge( V, size );
 
 
     // Setup the camera
-    float near =0.1f;
-    glm::vec3 viewpoint( 0.4f, 0.5f, -2.f );
+    float near =1.0f, far =100.f;
+    glm::vec3 viewpoint( 0.f, .5f, 2.0f );
     glm::vec3 target(0);
+    glm::vec3 viewdir =target - viewpoint;
     glm::vec3 up( 0, 1, 0 );
     glm::mat4 mat_view =glm::lookAt( viewpoint, target, up );
 
     // We assume a symmetric projection matrix
-    glm::mat4 mat_proj =glm::perspective( 30.f, (float)width/height, near, 200.f );
+    glm::mat4 mat_proj =glm::perspective( glm::radians( 45.f ), (float)width/height, near, far );
     const float right =near / mat_proj[0][0];
     const float top =near / mat_proj[1][1];
     const float left =-right, bottom =-top;
-    glm::vec3 upperLeftNormal =glm::normalize( glm::vec3( left, top, near ) );
-    glm::vec3 upperRightNormal =glm::normalize( glm::vec3( right, top, near ) );
-    glm::vec3 lowerLeftNormal =glm::normalize( glm::vec3( left, bottom, near ) );
-    glm::vec3 lowerRightNormal =glm::normalize( glm::vec3( right, bottom, near ) );
+    glm::vec3 upperLeftNormal =glm::normalize( glm::vec3( left, top, -near ) );
+    glm::vec3 upperRightNormal =glm::normalize( glm::vec3( right, top, -near ) );
+    glm::vec3 lowerLeftNormal =glm::normalize( glm::vec3( left, bottom, -near ) );
+    glm::vec3 lowerRightNormal =glm::normalize( glm::vec3( right, bottom, -near ) );
+    
 
     // Calculate the ray-normal interpolation constants
     const float invHeight = 1.f / (float)height;
@@ -194,13 +308,17 @@ main( int argc, char **argv ) {
     */
 
     // Ray-cast main-loop
-    glm::mat4 mat_model(1.f);
+ //   glm::mat4 mat_model(1.f);
+    glm::mat4 mat_model =glm::rotate( 45.0f, glm::vec3(0,1,0) );
+ //   glm::mat4 mat_model =glm::scale( glm::vec3(1.5f) );
     glm::mat4 mat_modelview =mat_view * mat_model;
     glm::mat4 mat_inv_modelview =glm::inverse( mat_modelview );
     glm::vec3 leftNormal = upperLeftNormal;
     glm::vec3 rightNormal = upperRightNormal;
     ray r;
-    r.origin = viewpoint;
+    r.origin = glm::vec3( mat_inv_modelview * glm::vec4(0,0,0,1) );
+//    r.origin = glm::vec3(0);
+    printVec( r.origin);
 
     for( int y=0; y < height; y++ ) {
         
@@ -212,12 +330,20 @@ main( int argc, char **argv ) {
             // Transform the ray from world-space to unit-cube-space
             ray r_cube;
             r_cube.direction =glm::normalize( glm::mat3( mat_inv_modelview ) * r.direction );
-            r_cube.origin =glm::mat3( mat_inv_modelview ) * r.origin;
+//            r_cube.direction =r.direction;
+            r_cube.origin =r.origin;
+            //r_cube.origin =viewpoint;
+
+            ray r_cube2;
+            r_cube2.direction =r_cube.direction + normalXDelta / 2.0f;
+            r_cube2.origin =r_cube.origin;
 
             // Cast the ray and set the framebuffer accordingly
-            glm::vec4 color = raycast( V, size, r_cube );
+            glm::vec4 color1 = raycast( V, size, r_cube );
+            glm::vec4 color2 = raycast( V, size, r_cube2 );
+
             uint32_t rgba;
-            packRGBA32( &rgba, color );
+            packRGBA32( &rgba, color1 * 0.5f + color2 * 0.5f );
 
             FB[y*width + x] = rgba;
 
