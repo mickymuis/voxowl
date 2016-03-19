@@ -1,3 +1,4 @@
+#define GLM_SWIZZLE 
 #include <stdio.h>
 #include <stdint.h>
 #include "platform.h"
@@ -7,6 +8,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/gtc/noise.hpp>
 
 typedef struct {
     glm::vec3 origin;
@@ -46,6 +48,16 @@ packRGBA32( uint32_t* rgba, glm::vec4 v ) {
         (uint32_t)(v.a * 255);
 }
 
+glm::vec4
+blendF2B( glm::vec4 src, glm::vec4 dst ) {
+    glm::vec4 c;
+    c.r = dst.a*(src.r * src.a) + dst.r;
+    c.g = dst.a*(src.g * src.a) + dst.g;
+    c.b = dst.a*(src.b * src.a) + dst.b;
+    c.a = (1.f - src.a) * dst.a;
+    return c;
+}
+
 void menger( voxel* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
     uint32_t step = cube.x / 3;
     if( step < 1 )
@@ -83,6 +95,83 @@ makeSponge( voxel* V, glm::ivec3 size ) {
    
     menger( V, size, size, glm::ivec3(0) );
 }
+
+void
+makeSphere( voxel* V, glm::ivec3 size ) {
+    float maxDist =min(size.x, min( size.y, size.z ) ) / 2;
+    float minDist =(float) maxDist * 0.8;
+    glm::ivec3 center( size.x / 2, size.y / 2, size.z / 2 );
+
+    for( uint32_t x=0; x < size.x; x++ )
+        for( uint32_t y=0; y < size.y; y++ )
+            for( uint32_t z=0; z < size.z; z++ ) {
+                float dist =glm::distance( center, glm::ivec3( x, y, z ) );
+                if( dist <= maxDist && dist >= minDist )
+                    *voxel3d(V,size,glm::ivec3(x,y,z)) = glm::vec4( 1.f, 1.f, 1.f, .1f );
+                else
+                    *voxel3d(V,size,glm::ivec3(x,y,z)) = glm::vec4( 0.f );
+            }
+}
+
+glm::vec3 
+bezier3(
+  float t,
+  const glm::vec3 &c1,
+  const glm::vec3 &c2,
+  const glm::vec3 &c3,
+  const glm::vec3 &c4)
+{
+    return   glm::pow( (1.f-t), 3 ) * c1 +
+           3.f * glm::pow( 1.f-t, 2 )*t*c2 +
+           3.f * (1.f-t) * glm::pow( t, 2) * c3 + 
+           glm::pow( t,3 ) * c4 ;
+}
+
+glm::vec4
+terrainLUT( float alt ) {
+    return glm::vec4( bezier3( alt,
+        glm::vec3( 0.4f, 0.4f, .1f ),
+        glm::vec3( 0.7f, 0.5f, 0.2f ),
+        glm::vec3( 0.4f, 1.0f, 0.2f ),
+        glm::vec3( 0.8f, 1.0f, 0.6f ) ) , 1.0f );
+}
+
+
+void
+makeTerrain( voxel *V, glm::ivec3 size ) {
+
+    glm::vec3 scale( 5.f, 1.f, 5.f );
+    float sealevel =0.2f * size.y;
+    glm::vec4 water( .6f, .8f, .9f, .1f );
+    for( uint32_t x=0; x < size.x; x++ )
+        for( uint32_t z=0; z < size.z; z++ ) {
+            float noise_x = ((float)x / (float)size.x) * scale.x;
+            float noise_z = ((float)z / (float)size.z) * scale.z; 
+
+            float height = 
+                glm::perlin( glm::vec2(noise_x, noise_z ) );
+            height += 1.0f;
+            height *= 0.5f * size.y;
+            for( uint32_t y=0; y < size.y; y++ ) {
+                if( y < height ) {
+                    float noise_y = ((float)y / (float)size.y);
+                    float v =glm::perlin( glm::vec3 ( noise_x, noise_y * scale.y, noise_z ) );
+                    if( v > 0.f ) {
+                        *voxel3d(V,size,glm::ivec3(x,y,z)) =
+                            terrainLUT( noise_y );
+                        continue;
+                    }
+                    else if( y < sealevel ) {
+                        *voxel3d(V,size,glm::ivec3(x,y,z)) = water;
+                        continue;
+                    }
+                }            
+                *voxel3d(V,size,glm::ivec3(x,y,z)) = glm::vec4( 0.f );
+
+            }   
+        }
+}
+
 
 __device__ __host__
 glm::vec3
@@ -193,7 +282,7 @@ raycast( voxel* V, glm::ivec3 size, const ray& r ) {
     else
         side = 2;
 
-    glm::vec4 color( 0.f, 0.f, 0.f, 0.f );
+    glm::vec4 color( 0.f, 0.f, 0.f, 1.f );
 
 //    ray r0;
 //    r0.origin =(r.origin + glm::vec3(0.499)) * glm::vec3(size);
@@ -236,11 +325,12 @@ raycast( voxel* V, glm::ivec3 size, const ray& r ) {
             break;
         
         glm::vec4 vox =*voxel3d( V, size, index );
-        color =vox;
 
-        color.r *= (3-side)/3.f;
-        color.g *= (3-side)/3.f;
-        color.b *= (3-side)/3.f;
+        vox.r *= (3-side)/3.f;
+        vox.g *= (3-side)/3.f;
+        vox.b *= (3-side)/3.f;
+
+        color =blendF2B( vox, color );
 
         if( vox.a == 1.f )
             break;
@@ -256,6 +346,8 @@ raycast( voxel* V, glm::ivec3 size, const ray& r ) {
 
     }
 
+    color.a = 1.f - color.a;
+//    color.a = 1.0f;
     return color;
 }
 
@@ -263,17 +355,17 @@ int
 main( int argc, char **argv ) {
 
     // Make a test sponge V of size L
-    const uint32_t L =243;
+//    const uint32_t L =256;//243;
     const int width =1024;
     const int height =768;
-    const glm::ivec3 size( L, L, L );
-    voxel* V = (voxel*)malloc( sizeof( voxel ) * L * L * L );
-    makeSponge( V, size );
+    const glm::ivec3 size( 32, 32, 32 );
+    voxel* V = (voxel*)malloc( sizeof( voxel ) * size.x * size.y * size.z );
+    makeSphere( V, size );
 
 
     // Setup the camera
     float near =1.0f, far =100.f;
-    glm::vec3 viewpoint( 0.f, .5f, 2.0f );
+    glm::vec3 viewpoint( 0.f, .8f, 2.0f );
     glm::vec3 target(0);
     glm::vec3 viewdir =target - viewpoint;
     glm::vec3 up( 0, 1, 0 );
