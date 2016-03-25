@@ -140,33 +140,42 @@ terrainLUT( float alt ) {
 void
 makeTerrain( voxel *V, glm::ivec3 size ) {
 
-    glm::vec3 scale( 5.f, 1.f, 5.f );
     float sealevel =0.2f * size.y;
-    glm::vec4 water( .6f, .8f, .9f, .1f );
+    glm::vec4 water( .4f, .8f, .9f, .2f );
     for( uint32_t x=0; x < size.x; x++ )
         for( uint32_t z=0; z < size.z; z++ ) {
-            float noise_x = ((float)x / (float)size.x) * scale.x;
-            float noise_z = ((float)z / (float)size.z) * scale.z; 
+            float noise_x = ((float)x / (float)size.x) * 2.f - 1.f;// * scale.x;
+            float noise_z = ((float)z / (float)size.z) *2.f - 1.f;// * scale.z; 
+            float density;
+            
+            *voxel3d(V,size,glm::ivec3(x,0,z)) =
+                    terrainLUT( 0 );
 
-            float height = 
-                glm::perlin( glm::vec2(noise_x, noise_z ) );
-            height += 1.0f;
-            height *= 0.5f * size.y;
-            for( uint32_t y=0; y < size.y; y++ ) {
-                if( y < height ) {
-                    float noise_y = ((float)y / (float)size.y);
-                    float v =glm::perlin( glm::vec3 ( noise_x, noise_y * scale.y, noise_z ) );
-                    if( v > 0.f ) {
+            for( uint32_t y=1; y < size.y; y++ ) {
+                    float noise_y = ((float)y / (float)size.y) * 2.f - 1.f;
+
+                    glm::vec3 ws( noise_x, noise_y, noise_z );
+//                    ws += glm::perlin( ws * 5.004f ) *0.5;
+                    density =-noise_y;
+                    density +=glm::perlin( ws * 17.7f ) * 0.05f;
+                    density +=glm::perlin( ws * 15.1f ) * 0.03f;
+                    density +=glm::perlin( ws * 9.3f ) * 0.10f;
+                    density +=glm::perlin( ws * 4.03f ) * 0.25f;
+                    density +=glm::perlin( ws * 2.4f ) * 0.50f;
+                    density +=glm::perlin( ws * 1.75f ) * 0.90f;
+                    density +=glm::perlin( ws * 1.07f ) * 1.30f;
+                    
+                    if( density > 0.f ) {
                         *voxel3d(V,size,glm::ivec3(x,y,z)) =
-                            terrainLUT( noise_y );
+                            terrainLUT( (noise_y + 1.f) / 2.f);
                         continue;
                     }
                     else if( y < sealevel ) {
                         *voxel3d(V,size,glm::ivec3(x,y,z)) = water;
                         continue;
                     }
-                }            
-                *voxel3d(V,size,glm::ivec3(x,y,z)) = glm::vec4( 0.f );
+                    else       
+                        *voxel3d(V,size,glm::ivec3(x,y,z)) = glm::vec4( 0.f );
 
             }   
         }
@@ -210,7 +219,7 @@ voxelSizeToAABB( glm::ivec3 size ) {
         (float)size.x / (float)largest,
         (float)size.y / (float)largest,
         (float)size.z / (float)largest );
-    b.max =-b.min - glm::vec3(0.001) ;
+    b.max =-b.min - glm::vec3(0.0) ;
     return b;
 }
 
@@ -241,83 +250,47 @@ rayAABBIntersect( const ray &r, const box& b, double& tmin, double& tmax ) {
     return tmax >= tmin;
 }
 
-glm::vec3
-diffDistance( glm::vec3 s, glm::vec3 ds ) {
-    glm::vec3 diff;
-    for( int i =0; i < 3; i++ ) {
-        float is;
-        if( s[i] < 0.f )
-            is = s[i] - floor( -1.f - s[i] );
-        else
-            is = s[i] - floor( s[i] );
-
-        if ( ds[i] > 0.f )
-            diff[i] = (1.f-is) / ds[i];
-        else
-            diff[i] = is / (-ds[i]);
-    }
-    return diff;
-}
-
 glm::vec4
 raycast( voxel* V, glm::ivec3 size, const ray& r ) {
     double tmin, tmax;
-    if( !rayAABBIntersect( r, voxelSizeToAABB( size ), tmin, tmax ) )
+    box b = voxelSizeToAABB( size );
+    if( !rayAABBIntersect( r, b, tmin, tmax ) )
         return glm::vec4( 0.0, 0.0, 0.0, 1.0 );
-//    else
-//      return glm::vec4( 1.0, 0.0, 0.0, 1.0 );
 
     glm::vec3 rayEntry = r.origin + r.direction * (float)max( 0.0, tmin );
     glm::vec3 rayExit = r.origin + r.direction * (float)tmax;
-    
-    int side;
-    if( fabs(rayEntry.x) > fabs(rayEntry.z) ) {
-        if( fabs( rayEntry.x ) > fabs( rayEntry.y ) )
-            side = 0;
-        else
-            side = 1;
-    }
-    else if( fabs( rayEntry.y ) > fabs( rayEntry.z ) )
-        side = 1;
-    else
-        side = 2;
 
-    glm::vec4 color( 0.f, 0.f, 0.f, 1.f );
+    // Determine the side of the unit cube the ray enters
+    // In order to do this, we need the component with the largest absolute number
+    // These lines are optimized to do so without branching
+    const glm::ivec3 box_plane( 0, 1, 2 ); // X, Y and Z dividing planes
+    glm::vec3 r0 = glm::abs( rayEntry / b.max );
+    float largest =max( r0.x, max( r0.y, r0.z ) ); // Largest relative component
+    glm::ivec3 r1 = glm::floor( r0 / largest ); // Vector with a '1' at the largest component
+    int side = glm::clamp( glm::dot( box_plane, r1 ), 0, 2 );
+   
+    // Map the ray entry from unit-cube space to voxel space
+    largest =max( size.x, max( size.y, size.z ) );
+    rayEntry =(rayEntry + b.max) * largest;
 
-//    ray r0;
-//    r0.origin =(r.origin + glm::vec3(0.499)) * glm::vec3(size);
-//    r0.direction =(r.direction + glm::vec3(0.499)) * glm::vec3(size);
-    rayEntry =(rayEntry + glm::vec3(0.5)) * glm::vec3(size);
-
-//    printVec( rayEntry );
+    // Calculate the index in the volume by chopping off the decimal part
     glm::ivec3 index = glm::clamp( 
         glm::ivec3( glm::floor( rayEntry ) ) ,
         glm::ivec3( 0 ),
-        glm::ivec3( size.x, size.y, size.z ) );
+        glm::ivec3( size.x-1, size.y-1, size.z-1 ) );
 
-//    color =*voxel3d( V, size, index );
-//    return color;
 
-    //glm::ivec3 index =voxelCoordToIndex( size, rayEntry );
-//    printVec( index ); 
-//    printf( "Voxel@ %d, %d, %d\n", entry.x, entry.y, entry.z );
-//    glm::vec4 color =*voxel3d( V, size, entry );
-
+    // Determine the sign of the stepping through the volume
     glm::ivec3 step = glm::sign( r.direction );
 
+    // deltaDist gives the distance on the ray path for each following dividing planr
     glm::vec3 deltaDist =glm::abs( glm::vec3( glm::length( r.direction ) ) / r.direction );
 
+    // Computes the distances to the next voxel for each component
     glm::vec3 sideDist = ( sign( r.direction ) * (glm::vec3(index) - rayEntry)
                         + (sign( r.direction ) * 0.5f ) + 0.5f ) * deltaDist;
 
-//    glm::vec3 sideDist = diffDistance( rayEntry, r.direction );
-//    glm::vec3 sideDist = (sign( r.direction ) * (voxelCoordToIndexf( size, rayEntry ) - glm::vec3(index))) / glm::vec3(size);
-//    printVec( sideDist );
-//    glm::vec3 sideDist = (sign(r.direction) * (voxelIndexToCoord( size,index) - r.origin) ) * deltaDist;
-
-//    glm::vec3 sideDist = sign(r.direction) * deltaDist;
-
-  //  glm::vec3 sideDist =( rayEntry - voxelIndexToCoord( size, index + step ) ) * glm::vec3(step) * deltaDist;
+    glm::vec4 color( 0.f, 0.f, 0.f, 1.f );
 
     while(1) {
 
@@ -340,6 +313,10 @@ raycast( voxel* V, glm::ivec3 size, const ray& r ) {
             if( sideDist[side] > sideDist[i] )
                 side =i;
 
+/*        float smallest =min( sideDist.x, min( sideDist.y, sideDist.z ) );
+        glm::ivec3 mask =glm::floor( sideDist / smallest );
+        side = glm::clamp( glm::dot( box_plane, mask ), 0, 2 );*/
+
         sideDist[side] += deltaDist[side];
         index[side] += step[side];
 
@@ -347,7 +324,6 @@ raycast( voxel* V, glm::ivec3 size, const ray& r ) {
     }
 
     color.a = 1.f - color.a;
-//    color.a = 1.0f;
     return color;
 }
 
@@ -355,24 +331,23 @@ int
 main( int argc, char **argv ) {
 
     // Make a test sponge V of size L
-//    const uint32_t L =256;//243;
     const int width =1024;
     const int height =768;
-    const glm::ivec3 size( 32, 32, 32 );
+    const glm::ivec3 size( 243, 243, 243 );
     voxel* V = (voxel*)malloc( sizeof( voxel ) * size.x * size.y * size.z );
-    makeSphere( V, size );
+    makeSponge( V, size );
 
 
     // Setup the camera
     float near =1.0f, far =100.f;
-    glm::vec3 viewpoint( 0.f, .8f, 2.0f );
-    glm::vec3 target(0);
+    glm::vec3 viewpoint( 1.f, .3f, -1.0f );
+    glm::vec3 target( 0.0f, 0.0f, 0.0f );
     glm::vec3 viewdir =target - viewpoint;
     glm::vec3 up( 0, 1, 0 );
     glm::mat4 mat_view =glm::lookAt( viewpoint, target, up );
 
     // We assume a symmetric projection matrix
-    glm::mat4 mat_proj =glm::perspective( glm::radians( 45.f ), (float)width/height, near, far );
+    glm::mat4 mat_proj =glm::perspective( glm::radians( 60.f ), (float)width/height, near, far );
     const float right =near / mat_proj[0][0];
     const float top =near / mat_proj[1][1];
     const float left =-right, bottom =-top;
@@ -392,17 +367,10 @@ main( int argc, char **argv ) {
     // Setup the framebuffer
     uint32_t* FB = (uint32_t*)malloc( sizeof(uint32_t) * width * height );
 
-    
-    // Test
-/*    for( uint32_t x = 0; x < L; x++ )
-        for( uint32_t y = 0; y < L; y++ )
-            packRGBA32( &FB[y*L+x], *voxel3d( V, glm::ivec3( L, L, L ), glm::ivec3( x, y, 0 ) ) );
-    */
-
     // Ray-cast main-loop
- //   glm::mat4 mat_model(1.f);
-    glm::mat4 mat_model =glm::rotate( 45.0f, glm::vec3(0,1,0) );
- //   glm::mat4 mat_model =glm::scale( glm::vec3(1.5f) );
+    glm::mat4 mat_model(1.f);
+ //   glm::mat4 mat_model =glm::rotate( 45.0f, glm::vec3(0,1,0) );
+//    glm::mat4 mat_model =glm::scale( glm::vec3(2.5f) );
     glm::mat4 mat_modelview =mat_view * mat_model;
     glm::mat4 mat_inv_modelview =glm::inverse( mat_modelview );
     glm::vec3 leftNormal = upperLeftNormal;
