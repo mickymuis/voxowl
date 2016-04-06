@@ -1,5 +1,4 @@
 #define GLM_SWIZZLE 
-//#define GLM_FORCE_CXX11
 #include <stdio.h>
 #include <stdint.h>
 #include "platform.h"
@@ -10,19 +9,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/noise.hpp>
-#include <vector_types.h>
-
-#define ASSERT_GPU(err) { assertGpu((err), __FILE__, __LINE__); }
-inline void
-assertGpu(cudaError_t code, char *file, int line, bool abort=true)
-{
-    if (code != cudaSuccess) 
-    {
-        fprintf(stderr,"Error (cuda): %s %s %d\n", cudaGetErrorString(code), file, line);
-        if (abort) 
-            exit(code);
-    }
-}
 
 typedef struct {
     glm::vec3 origin;
@@ -34,36 +20,7 @@ typedef struct {
     glm::vec3 max;
 } box;
 
-typedef uint32_t voxel;
-typedef uint32_t fragment;
-
-typedef struct {
-    glm::mat4 matInvModelView;
-    glm::vec3 upperLeftNormal;
-    glm::vec3 upperRightNormal;
-    glm::vec3 lowerLeftNormal;
-    glm::vec3 lowerRightNormal;
-    glm::vec3 leftNormalYDelta;
-    glm::vec3 rightNormalYDelta;
-    glm::vec3 origin;
-    float invHeight;
-    float invWidth;
-} raycastInfo_t;
-
-typedef struct {
-    glm::ivec3 size;
-    glm::mat4 matModel;
-    cudaArray *data;
-} volume_t;
-
-typedef struct {
-    int width, height;
-    cudaArray *data;
-    int aaXSamples, aaYSamples;
-} framebuffer_t;
-
-texture<voxel,3> volume_texture;
-surface<void, 2> fb_surface; 
+typedef glm::vec4 voxel;
 
 void
 printVec( glm::vec3 v ) {
@@ -91,17 +48,6 @@ packRGBA32( uint32_t* rgba, glm::vec4 v ) {
         (uint32_t)(v.a * 255);
 }
 
-__device__ __host__
-glm::vec4
-unpackRGBA32( const uint32_t& rgba ) {
-    return glm::vec4(
-        (float)((rgba >> 24) & 0xff) / 255.f,
-        (float)((rgba >> 16) & 0xff) / 255.f,
-        (float)((rgba >> 8) & 0xff) / 255.f,
-        (float)(rgba & 0xff) / 255.f );
-}
-
-__device__ __host__
 glm::vec4
 blendF2B( glm::vec4 src, glm::vec4 dst ) {
     glm::vec4 c;
@@ -112,7 +58,6 @@ blendF2B( glm::vec4 src, glm::vec4 dst ) {
     return c;
 }
 
-__device__ __host__
 void menger( voxel* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
     uint32_t step = cube.x / 3;
     if( step < 1 )
@@ -127,11 +72,8 @@ void menger( voxel* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
                     || ( x == 1 && y == 1 ) ) {
                     for( uint32_t i = offs.x; i < offs.x + step; i++ )
                         for( uint32_t j = offs.y; j < offs.y + step; j++ )
-                            for( uint32_t k = offs.z; k < offs.z + step; k++ ) {
-                                glm::vec4 color =unpackRGBA32( *voxel3d( V, size, glm::ivec3(i,j,k) ) );
-                                color.a =0.f;
-                                packRGBA32( voxel3d( V, size, glm::ivec3( i, j, k )), color );
-                            }
+                            for( uint32_t k = offs.z; k < offs.z + step; k++ )
+                                voxel3d( V, size, glm::ivec3( i, j, k ))->a =0.0f;
                 }
                 // corner element, expand recursively
                 else
@@ -139,24 +81,21 @@ void menger( voxel* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
             }
 }
 
-__device__ __host__
 void 
 makeSponge( voxel* V, glm::ivec3 size ) {
 
     for( uint32_t x=0; x < size.x; x++ )
         for( uint32_t y=0; y < size.y; y++ )
             for( uint32_t z=0; z < size.z; z++ ) {
-                packRGBA32(voxel3d(V,size,glm::ivec3(x,y,z)), glm::vec4(
-                    (float)x / (float)(size.x-1),
-                    (float)y / (float)(size.y-1),
-                    (float)z / (float)(size.z-1),
-                    1.f ));
+                (*voxel3d(V,size,glm::ivec3(x,y,z))).r = (float)x / (float)(size.x-1);
+                (*voxel3d(V,size,glm::ivec3(x,y,z))).g = (float)y / (float)(size.y-1);
+                (*voxel3d(V,size,glm::ivec3(x,y,z))).b = (float)z / (float)(size.z-1);
+                (*voxel3d(V,size,glm::ivec3(x,y,z))).a = 1.0f;
             }
    
     menger( V, size, size, glm::ivec3(0) );
 }
 
-__device__ __host__
 void
 makeSphere( voxel* V, glm::ivec3 size ) {
     float maxDist =min(size.x, min( size.y, size.z ) ) / 2;
@@ -168,13 +107,12 @@ makeSphere( voxel* V, glm::ivec3 size ) {
             for( uint32_t z=0; z < size.z; z++ ) {
                 float dist =glm::distance( center, glm::ivec3( x, y, z ) );
                 if( dist <= maxDist && dist >= minDist )
-                    *voxel3d(V,size,glm::ivec3(x,y,z)) = (uint32_t)0xFFFFFFFF;
+                    *voxel3d(V,size,glm::ivec3(x,y,z)) = glm::vec4( 1.f, 1.f, 1.f, .1f );
                 else
-                    *voxel3d(V,size,glm::ivec3(x,y,z)) = 0;
+                    *voxel3d(V,size,glm::ivec3(x,y,z)) = glm::vec4( 0.f );
             }
 }
 
-__device__ __host__
 glm::vec3 
 bezier3(
   float t,
@@ -189,7 +127,6 @@ bezier3(
            glm::pow( t,3 ) * c4 ;
 }
 
-__device__ __host__
 glm::vec4
 terrainLUT( float alt ) {
     return glm::vec4( bezier3( alt,
@@ -200,7 +137,6 @@ terrainLUT( float alt ) {
 }
 
 
-__device__ __host__
 void
 makeTerrain( voxel *V, glm::ivec3 size ) {
 
@@ -212,8 +148,8 @@ makeTerrain( voxel *V, glm::ivec3 size ) {
             float noise_z = ((float)z / (float)size.z) *2.f - 1.f;// * scale.z; 
             float density;
             
-            packRGBA32( voxel3d(V,size,glm::ivec3(x,0,z)),
-                    terrainLUT( 0 ) );
+            *voxel3d(V,size,glm::ivec3(x,0,z)) =
+                    terrainLUT( 0 );
 
             for( uint32_t y=1; y < size.y; y++ ) {
                     float noise_y = ((float)y / (float)size.y) * 2.f - 1.f;
@@ -230,22 +166,50 @@ makeTerrain( voxel *V, glm::ivec3 size ) {
                     density +=glm::perlin( ws * 1.07f ) * 1.30f;
                     
                     if( density > 0.f ) {
-                        packRGBA32( voxel3d(V,size,glm::ivec3(x,y,z)),
-                            terrainLUT( (noise_y + 1.f) / 2.f) );
+                        *voxel3d(V,size,glm::ivec3(x,y,z)) =
+                            terrainLUT( (noise_y + 1.f) / 2.f);
                         continue;
                     }
                     else if( y < sealevel ) {
-                        packRGBA32( voxel3d(V,size,glm::ivec3(x,y,z)), water );
+                        *voxel3d(V,size,glm::ivec3(x,y,z)) = water;
                         continue;
                     }
                     else       
-                        *voxel3d(V,size,glm::ivec3(x,y,z)) = 0;
+                        *voxel3d(V,size,glm::ivec3(x,y,z)) = glm::vec4( 0.f );
 
             }   
         }
 }
 
+
 __device__ __host__
+glm::vec3
+voxelIndexToCoord( glm::ivec3 size, glm::ivec3 pos ) {
+    int largest = max( size.x, max( size.y, size.z ) )-1;
+    return glm::vec3( 
+        (float)pos.x/(float)largest-.5f,
+        (float)pos.y/(float)largest-.5f,
+        (float)pos.z/(float)largest-.5f );
+}
+
+glm::ivec3
+voxelCoordToIndex( glm::ivec3 size, glm::vec3 v ) {
+    int largest = max( size.x, max( size.y, size.z ) )-1;
+    return glm::ivec3(
+        (int)round((v.x+0.5f)*(float)largest),
+        (int)round((v.y+0.5f)*(float)largest),
+        (int)round((v.z+0.5f)*(float)largest) );
+}
+
+glm::vec3
+voxelCoordToIndexf( glm::ivec3 size, glm::vec3 v ) {
+    int largest = max( size.x, max( size.y, size.z ) )-1;
+    return glm::vec3(
+        (v.x+0.5f)*(float)largest,
+        (v.y+0.5f)*(float)largest,
+        (v.z+0.5f)*(float)largest );
+}
+
 box
 voxelSizeToAABB( glm::ivec3 size ) {
     int largest = max( size.x, max( size.y, size.z ) );
@@ -259,7 +223,6 @@ voxelSizeToAABB( glm::ivec3 size ) {
     return b;
 }
 
-__device__ __host__
 bool
 rayAABBIntersect( const ray &r, const box& b, double& tmin, double& tmax ) {
     glm::vec3 n_inv = glm::vec3( 
@@ -287,11 +250,9 @@ rayAABBIntersect( const ray &r, const box& b, double& tmin, double& tmax ) {
     return tmax >= tmin;
 }
 
-__device__
 glm::vec4
-raycast( volume_t v, const ray& r ) {
+raycast( voxel* V, glm::ivec3 size, const ray& r ) {
     double tmin, tmax;
-    glm::ivec3 size =v.size;
     box b = voxelSizeToAABB( size );
     if( !rayAABBIntersect( r, b, tmin, tmax ) )
         return glm::vec4( 0.0, 0.0, 0.0, 1.0 );
@@ -336,8 +297,7 @@ raycast( volume_t v, const ray& r ) {
         if( index[side] < 0 || index[side] >= size[side] )
             break;
         
-       // glm::vec4 vox =unpackRGBA32( *voxel3d( V, size, index ) );
-        glm::vec4 vox =unpackRGBA32( tex3D( volume_texture, index.z, index.y, index.x ) );
+        glm::vec4 vox =*voxel3d( V, size, index );
 
         vox.r *= (3-side)/3.f;
         vox.g *= (3-side)/3.f;
@@ -348,124 +308,40 @@ raycast( volume_t v, const ray& r ) {
         if( vox.a == 1.f )
             break;
 
+/*
+        for( int i =0; i < 3; i++ ) 
+            if( boxDist[side] > boxDist[i] )
+                side =i;*/
 
-        // Branchless equivalent for
-        //for( int i =0; i < 3; i++ ) 
-        //    if( boxDist[side] > boxDist[i] )
-        //        side =i;*/
-        glm::bvec3 b0= glm::lessThan( boxDist, glm::vec3( boxDist.y, boxDist.z, boxDist.x ) /*boxDist.yzx()*/ );
-        glm::bvec3 b1= glm::lessThanEqual( boxDist, glm::vec3( boxDist.z, boxDist.x, boxDist.y ) /*boxDist.zxy()*/ );
+        /*float smallest =min( sideDist.x, min( sideDist.y, sideDist.z ) );
+        glm::ivec3 mask =glm::floor( sideDist / smallest );
+        side = glm::clamp( glm::dot( box_plane, mask ), 0, 2 );*/
+
+        glm::bvec3 b0= glm::lessThan( boxDist.xyz(), boxDist.yzx() );
+        glm::bvec3 b1= glm::lessThanEqual( boxDist.xyz(), boxDist.zxy() );
         glm::ivec3 mask =glm::ivec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );
         side = glm::dot( box_plane, mask );
 
         boxDist[side] += deltaDist[side];
         index[side] += step[side];
+
+
     }
 
     color.a = 1.f - color.a;
     return color;
 }
 
-
-__global__
-void
-computeFragment( raycastInfo_t raycast_info, volume_t volume, framebuffer_t framebuffer ) {
-    const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    
-    glm::vec3 leftNormal = raycast_info.upperLeftNormal;
-    glm::vec3 rightNormal = raycast_info.upperRightNormal;
-       
-    ray r;
-    r.origin =raycast_info.origin;
-    leftNormal += raycast_info.leftNormalYDelta * (float)y;
-    rightNormal += raycast_info.rightNormalYDelta * (float)y;
-    r.direction = leftNormal;
-    
-    glm::vec3 normalXDelta = (rightNormal - leftNormal) * raycast_info.invWidth;
-    r.direction +=normalXDelta * (float)x;
-
-    const float inv_aa_samples =1.f / (float)(framebuffer.aaXSamples * framebuffer.aaYSamples);
-    glm::vec4 frag(0);
-
-    for( int i =0; i < framebuffer.aaXSamples; i++ )
-        for( int j =0; j < framebuffer.aaYSamples; j++ ) {
-
-            // Shift the ray direction depending on the AA sample
-            glm::vec3 raydir = r.direction 
-                + (float)i / ( 1 * framebuffer.aaXSamples) * normalXDelta
-                + (float)j / ( 1 * framebuffer.aaYSamples) * raycast_info.leftNormalYDelta;
-    
-            // Transform the ray from world-space to unit-cube-space
-            ray r_cube;
-            r_cube.direction =glm::normalize( glm::mat3( raycast_info.matInvModelView ) * raydir );
-            r_cube.origin =r.origin;
-
-            frag += inv_aa_samples * raycast( volume, r_cube );
-
-//    ray r_cube2;
-//    r_cube2.direction =r_cube.direction + normalXDelta / 2.0f;
-//    r_cube2.origin =r_cube.origin;
-        }
-
-    // Cast the ray and set the framebuffer accordingly
-//    glm::vec4 color1 = raycast( volume, r_cube );
-//    glm::vec4 color2 = raycast( volume, r_cube2 );
-
-    uint32_t rgba;
-    packRGBA32( &rgba, frag );
-
-//    FB[y*width + x] = rgba;
-
-
-
-   // uint32_t color =tex3D( volume_texture, 0, x, y );
-    surf2Dwrite( rgba, fb_surface, x*4, y, cudaBoundaryModeTrap );
-}
-
 int 
 main( int argc, char **argv ) {
 
+    // Make a test sponge V of size L
     const int width =1024;
     const int height =768;
-    const dim3 blocksize(16, 16);
     const glm::ivec3 size( 243, 243, 243 );
-    
-    
-    // Allocate the volume on the device
-    volume_t d_volume;
-    d_volume.size =size;
-    const cudaExtent v_extent = make_cudaExtent( d_volume.size.x, d_volume.size.y, d_volume.size.z );
-//    cudaChannelFormatDesc v_channelDesc = cudaCreateChannelDesc<voxel>();
-    cudaChannelFormatDesc v_channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindUnsigned);
-    ASSERT_GPU( cudaMalloc3DArray( &d_volume.data, &v_channelDesc, v_extent ) );
-    volume_texture.normalized = false;                      
-    volume_texture.filterMode = cudaFilterModePoint;      
-    volume_texture.addressMode[0] = cudaAddressModeClamp;   
-    volume_texture.addressMode[1] = cudaAddressModeClamp;
-    volume_texture.addressMode[2] = cudaAddressModeClamp;
-    ASSERT_GPU( cudaBindTextureToArray( volume_texture, d_volume.data, v_channelDesc ) );
-    
-// Allocate the framebuffer on the device
-    framebuffer_t d_fb;
-    d_fb.width = width;
-    d_fb.height = height;
-    d_fb.aaXSamples =2;
-    d_fb.aaYSamples =2;
-//    const cudaExtent fb_extent = make_cudaExtent( width, height, 1 );
-    cudaChannelFormatDesc fb_channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindUnsigned);
-    ASSERT_GPU( cudaMallocArray( &(d_fb.data), &fb_channelDesc, width, height, cudaArraySurfaceLoadStore ) );
-    ASSERT_GPU( cudaBindSurfaceToArray( fb_surface, d_fb.data ) );
-
-    // Setup the volume on the CPU and upload to the device
     voxel* V = (voxel*)malloc( sizeof( voxel ) * size.x * size.y * size.z );
     makeSponge( V, size );
-    cudaMemcpy3DParms copyParams = {0};
-    copyParams.srcPtr   = make_cudaPitchedPtr((void*)V, v_extent.width*sizeof(voxel), v_extent.width, v_extent.height);
-    copyParams.dstArray = d_volume.data;
-    copyParams.extent   = v_extent;
-    copyParams.kind     = cudaMemcpyHostToDevice;
-    ASSERT_GPU( cudaMemcpy3D(&copyParams) );
+
 
     // Setup the camera
     float near =1.0f, far =100.f;
@@ -480,25 +356,21 @@ main( int argc, char **argv ) {
     const float right =near / mat_proj[0][0];
     const float top =near / mat_proj[1][1];
     const float left =-right, bottom =-top;
-
-    // Setup the arguments to the raycaster
-    raycastInfo_t raycast_info;
-    raycast_info.upperLeftNormal =glm::normalize( glm::vec3( left, top, -near ) );
-    raycast_info.upperRightNormal =glm::normalize( glm::vec3( right, top, -near ) );
-    raycast_info.lowerLeftNormal =glm::normalize( glm::vec3( left, bottom, -near ) );
-    raycast_info.lowerRightNormal =glm::normalize( glm::vec3( right, bottom, -near ) );
+    glm::vec3 upperLeftNormal =glm::normalize( glm::vec3( left, top, -near ) );
+    glm::vec3 upperRightNormal =glm::normalize( glm::vec3( right, top, -near ) );
+    glm::vec3 lowerLeftNormal =glm::normalize( glm::vec3( left, bottom, -near ) );
+    glm::vec3 lowerRightNormal =glm::normalize( glm::vec3( right, bottom, -near ) );
     
 
     // Calculate the ray-normal interpolation constants
-    raycast_info.invHeight = 1.f / (float)height;
-    raycast_info.invWidth = 1.f / (float)width;
+    const float invHeight = 1.f / (float)height;
+    const float invWidth = 1.f / (float)width;
 
-    raycast_info.leftNormalYDelta = (raycast_info.lowerLeftNormal - raycast_info.upperLeftNormal) * raycast_info.invHeight;
-    raycast_info.rightNormalYDelta =(raycast_info.lowerRightNormal - raycast_info.upperRightNormal) * raycast_info.invHeight;
+    glm::vec3 leftNormalYDelta = (lowerLeftNormal - upperLeftNormal) * invHeight;
+    glm::vec3 rightNormalYDelta =(lowerRightNormal - upperRightNormal) * invHeight;
 
-    // Setup the host framebuffer
+    // Setup the framebuffer
     uint32_t* FB = (uint32_t*)malloc( sizeof(uint32_t) * width * height );
-//    for( uint32_t i=0; i < width*height; i++ ) FB[i] = 0x00ff00ff;
 
     // Ray-cast main-loop
     glm::mat4 mat_model(1.f);
@@ -506,15 +378,14 @@ main( int argc, char **argv ) {
 //    glm::mat4 mat_model =glm::scale( glm::vec3(2.5f) );
     glm::mat4 mat_modelview =mat_view * mat_model;
     glm::mat4 mat_inv_modelview =glm::inverse( mat_modelview );
-    glm::vec3 leftNormal = raycast_info.upperLeftNormal;
-    glm::vec3 rightNormal = raycast_info.upperRightNormal;
-   // ray r;
-    raycast_info.origin = glm::vec3( mat_inv_modelview * glm::vec4(0,0,0,1) );
-    raycast_info.matInvModelView = mat_inv_modelview;
+    glm::vec3 leftNormal = upperLeftNormal;
+    glm::vec3 rightNormal = upperRightNormal;
+    ray r;
+    r.origin = glm::vec3( mat_inv_modelview * glm::vec4(0,0,0,1) );
 //    r.origin = glm::vec3(0);
-    //printVec( r.origin);
+    printVec( r.origin);
 
-/*    for( int y=0; y < height; y++ ) {
+    for( int y=0; y < height; y++ ) {
         
         r.direction = leftNormal;
         glm::vec3 normalXDelta = (rightNormal - leftNormal) * invWidth;
@@ -547,24 +418,9 @@ main( int argc, char **argv ) {
         // Shift to the next scanline
         leftNormal += leftNormalYDelta;
         rightNormal += rightNormalYDelta;
-    }*/
+    }
 
-    // Divide the invidual fragments over N / blocksize blocks
-    // Run the raycast kernel on the device
-    const dim3 numblocks( width / blocksize.x, height / blocksize.y );
-    ASSERT_GPU( cudaBindSurfaceToArray( fb_surface, d_fb.data ) );
-    computeFragment<<<numblocks, blocksize>>>( raycast_info, d_volume, d_fb );
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) 
-            printf("Error: %s\n", cudaGetErrorString(err));
-    ASSERT_GPU( cudaDeviceSynchronize() );
-
-    // Copy the framebuffer to the host
-    ASSERT_GPU ( cudaMemcpyFromArray( FB, d_fb.data, 0, 0, width*height*sizeof(fragment), cudaMemcpyDeviceToHost ) ); 
-//    ASSERT_GPU ( cudaMemcpy2DFromArray( FB, 0, d_fb.data, 0, 0, width*sizeof(fragment), height, cudaMemcpyDeviceToHost ) );
-
-    printf( "FB[9999]: 0x%x\n", FB[9999] );
-
+    
     // Write the buffer as BMP
     std::vector<uint8_t> output;
     size_t output_size =bitmap_encode_rgba( FB, width, height, output );
