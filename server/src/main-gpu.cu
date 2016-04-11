@@ -337,7 +337,8 @@ raycast( volume_t v, const ray& r ) {
             break;
         
        // glm::vec4 vox =unpackRGBA32( *voxel3d( V, size, index ) );
-        glm::vec4 vox =unpackRGBA32( tex3D( volume_texture, index.z, index.y, index.x ) );
+        glm::vec3 cont_index = glm::vec3(index);//(boxDist) * largest;
+        glm::vec4 vox =unpackRGBA32( tex3D( volume_texture, cont_index.z, cont_index.y, cont_index.x ) );
 
         vox.r *= (3-side)/3.f;
         vox.g *= (3-side)/3.f;
@@ -450,8 +451,8 @@ main( int argc, char **argv ) {
     framebuffer_t d_fb;
     d_fb.width = width;
     d_fb.height = height;
-    d_fb.aaXSamples =2;
-    d_fb.aaYSamples =2;
+    d_fb.aaXSamples =4;
+    d_fb.aaYSamples =4;
 //    const cudaExtent fb_extent = make_cudaExtent( width, height, 1 );
     cudaChannelFormatDesc fb_channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindUnsigned);
     ASSERT_GPU( cudaMallocArray( &(d_fb.data), &fb_channelDesc, width, height, cudaArraySurfaceLoadStore ) );
