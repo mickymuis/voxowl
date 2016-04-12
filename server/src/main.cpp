@@ -17,16 +17,29 @@ typedef struct {
 typedef std::list<conthread_t> conthreadlist_t;
 
 void
-newConnection( ClientSocket* c ) {
-    Parser h( c->getBuffer(), 0 );
+newConnection( ClientSocket* c, Object* scope ) {
+    Parser h( c->getBuffer(), scope );
     while( h.evaluateNext() ) {}
 
     c->close();
     std::cerr << "Connection closed" << std::endl;
 }
 
+class MyClass : public Object {
+    public:
+        MyClass( const std::string& name, Object* obj ) : Object( name, obj ) {}
+};
+
 int
 main( int argc, char** argv ) {
+
+    /* Test code */
+
+    Object root("root");
+    MyClass *myinstance = new MyClass( "myclass1", &root );
+    ObjectFactory::newFactory( new ObjectFactoryT<MyClass>("MyClass") );
+
+    /* */
 
     uint32_t portnum =5678;
 
@@ -47,7 +60,7 @@ main( int argc, char** argv ) {
             std::cerr << "Accepting new connection" << std::endl;
             conthread_t t;
             t.connection =c;
-            t.thread =new std::thread( newConnection, c );
+            t.thread =new std::thread( newConnection, c, &root );
             connection_list.push_back( t );
         }
         else
