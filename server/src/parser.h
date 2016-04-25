@@ -43,6 +43,10 @@ class Symbol {
             SYM_ID /* named reference */
         };
         Symbol( SYM s = SYM_NONE ) { type = s; }
+        Symbol( SYM s, std::string str ) { type = s; value_string = str; }
+        Symbol( Object* obj ) { type = SYM_OBJECT; value_ptr = obj; }
+        Symbol( Object* obj, std::string member ) { type = SYM_OBJECT_MEMBER; value_ptr = obj; value_string = member; }
+        Symbol( double d ) { type = SYM_REAL, value_real = d; }
 
         SYM type;
         std::string value_string;
@@ -110,6 +114,6 @@ class Parser {
         std::iostream stream;
 
         Statement* parseArglist( const Token::list& );
-
+        Statement* parseReference( const std::string& str );
         static Token::list tokenize( const std::string& );
 };

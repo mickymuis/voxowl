@@ -27,7 +27,12 @@ newConnection( ClientSocket* c, Object* scope ) {
 
 class MyClass : public Object {
     public:
-        MyClass( const std::string& name, Object* obj ) : Object( name, obj ) {}
+        MyClass( const std::string& name, Object* obj ) : Object( name, obj ) {
+            property_list.push_back( "name" );
+            property_list.push_back( "some_value" );
+            method_list.push_back( "func" );
+            method_list.push_back( "draw" );
+        }
 };
 
 int

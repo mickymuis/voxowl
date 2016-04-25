@@ -134,7 +134,14 @@ Parser::parse( const Token::list& tokenlist ) {
             s = new Statement( Statement::STMNT_DELETE );
         }
         else if( tokenlist[0].value_string == "list" ) {
-            s = new Statement( Statement::STMNT_LIST );
+            if( tokenlist.size() != 1 || ( tokenlist.size() > 1 && tokenlist[1].type != Token::TOKEN_ID ) {
+                s = new Statement( Statement::TYPE_ERROR );
+                s->detail = "Too many arguments to `list'";
+            } else {
+                s = new Statement( Statement::STMNT_LIST );
+                s->leftChild = new Statement( Statement::TYPE_SYMBOL );
+                s->leftChild->symbol = Symbol( Symbol::SYM_ID, tokenlist[1].value_string );
+            }
         }
         else if( tokenlist[0].value_string == "classlist" ) {
             s = new Statement( Statement::STMNT_CLASSLIST );
@@ -173,6 +180,16 @@ Parser::parse( const Token::list& tokenlist ) {
     }*/
 
     return s;
+}
+
+Statement*
+Parser::parseReference( const std::string& str ) {
+
+}
+
+Statement*
+Parser::parseArglist( const Token::list& ) {
+
 }
 
 Token::list
