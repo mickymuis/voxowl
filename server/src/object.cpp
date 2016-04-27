@@ -1,6 +1,57 @@
 #include "object.h"
 #include "parser.h"
 
+std::string 
+Variant::toString() {
+    switch( _type ) {
+        case TYPE_REAL:
+            return std::to_string( (long double)value_real );
+            break;
+        case TYPE_STRING:
+            return value_string;
+            break;
+        case TYPE_OBJECT:
+            if( value_ptr ) 
+                return value_ptr->getName();
+            break;
+        default:
+            break;
+    }
+    return std::string();
+}
+
+double 
+Variant::toReal() {
+    switch( _type ) {
+        case TYPE_REAL:
+            return value_real;
+            break;
+        case TYPE_STRING:
+            return atof( value_string.c_str() );
+            break;
+        case TYPE_OBJECT:
+            break;
+        default:
+            break;
+    }
+    return 0.;
+}
+
+Object* 
+Variant::toObject() {
+    switch( _type ) {
+        case TYPE_REAL:
+            break;
+        case TYPE_STRING:
+            break;
+        case TYPE_OBJECT:
+            return value_ptr;
+            break;
+        default:
+            break;
+    }
+    return 0;
+}
 Object::Object( const std::string& name, Object* parent ) : parent( parent ), name( name ) {
     if( parent )
         parent->children.insert( this );
@@ -63,8 +114,8 @@ Object::update( float deltatime ) {
         (*it)->update( deltatime );
 }
 
-stringlist_t Object::listMeta( META_TYPE meta, const std::string& name ) const {
-    Object *obj =getChildByName( name );
+stringlist_t Object::listMeta( META_TYPE meta, const std::string& reference ) const {
+    Object *obj =getChildByName( reference );
     if( obj )
         return obj->listMeta( meta );
     stringlist_t list;
@@ -72,13 +123,13 @@ stringlist_t Object::listMeta( META_TYPE meta, const std::string& name ) const {
 }
 
 bool 
-Object::setMeta( const std::string& property, const std::string& value ) {
+Object::setMeta( const std::string& property, const Variant& value ) {
     return false;
 }
 
-std::string 
+Variant 
 Object::getMeta( const std::string& property ) const {
-    return std::string();
+    return Variant();
 }
 
 stringlist_t 
@@ -97,7 +148,19 @@ Object::listMeta( META_TYPE t ) const {
 }
 
 bool 
-Object::callMeta( const std::string&, MetaArgument::list ) {
+Object::hasMeta( META_TYPE type, const std::string& name ) const {
+    stringlist_t list = listMeta( type );
+    return std::find( list.begin(), list.end(), name ) != list.end();
+}
+
+bool 
+Object::hasMeta( META_TYPE type, const std::string& reference, const std::string& name ) const {
+    stringlist_t list = listMeta( type, reference );
+    return std::find( list.begin(), list.end(), name ) != list.end();
+}
+
+bool 
+Object::callMeta( const std::string&, Variant::list ) {
     return false;
 }
 

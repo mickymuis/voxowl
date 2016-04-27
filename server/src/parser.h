@@ -114,6 +114,8 @@ class Parser {
         std::iostream stream;
 
         Statement* parseArglist( const Token::list& );
-        Statement* parseReference( const std::string& str );
+        Statement* parseReference( Object* local_scope, const std::string& str );
+        Statement* parseMemberReference( Object* local_scope, const std::string& str );
+        void generateManifest( std::iostream &out, Object* obj );
         static Token::list tokenize( const std::string& );
 };

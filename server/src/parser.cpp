@@ -84,11 +84,34 @@ Parser::evaluate( Statement *s ) {
                 case Statement::STMNT_DELETE:
                     break;
                 /* left-child: optional symbol, right-child: none */
-                case Statement::STMNT_LIST:
+                case Statement::STMNT_LIST: {
+                    if( s->leftChild && s->leftChild->type == Statement::TYPE_ERROR ) {
+                        stream << "Error: " << s->leftChild->detail << std::endl;
+                        break;
+                    }
+                    Object *obj =scope;
+                    if( s->leftChild && s->leftChild->symbol.type == Symbol::SYM_OBJECT )
+                        obj =s->leftChild->symbol.value_ptr;
+
+                    generateManifest( stream, obj );
                     break;
+                }
                 /* left-child: symbol (object-member), right-child: none */
-                case Statement::STMNT_GET:
+                case Statement::STMNT_GET: {
+                    if( s->leftChild && s->leftChild->type == Statement::TYPE_ERROR ) {
+                        stream << "Error: " << s->leftChild->detail << std::endl;
+                        break;
+                    }
+                    Object *obj;
+                    obj =s->leftChild->symbol.value_ptr;
+                    std::string prop = s->leftChild->symbol.value_string;
+                    if( !obj->hasMeta( Object::META_PROPERTY, prop ) ) {
+                        stream << "Error: no property `" << prop << "' in `" << obj->getName() << "'" << std::endl;
+                        break;
+                    }
+                    stream << obj->getMeta( prop ).toString() << std::endl;
                     break;
+                }
                 /* left-child: symbol (object-member), right-child: arglist */
                 case Statement::STMNT_CALL:
                     break;
@@ -125,7 +148,20 @@ Parser::parse( const Token::list& tokenlist ) {
             s = new Statement( Statement::STMNT_SET );
         }
         else if( tokenlist[0].value_string == "get" ) {
-            s = new Statement( Statement::STMNT_GET );
+            if( tokenlist.size() > 2 ) {
+                s = new Statement( Statement::TYPE_ERROR );
+                s->detail = "Too many arguments to `get'";
+            } else if( tokenlist.size() < 2 ) {
+                s = new Statement( Statement::TYPE_ERROR );
+                s->detail = "Too few arguments to `get'";
+            } else if( tokenlist[1].type != Token::TOKEN_ID ) {
+                s = new Statement( Statement::TYPE_ERROR );
+                s->detail = "Expected reference in `" + tokenlist[1].value_string + "'";
+            } else  {
+                s = new Statement( Statement::STMNT_GET );
+                /* Only the global scope is currently supported */
+                s->leftChild =parseMemberReference( scope, tokenlist[1].value_string );
+            }
         }
         else if( tokenlist[0].value_string == "new" ) {
             s = new Statement( Statement::STMNT_NEW );
@@ -134,13 +170,14 @@ Parser::parse( const Token::list& tokenlist ) {
             s = new Statement( Statement::STMNT_DELETE );
         }
         else if( tokenlist[0].value_string == "list" ) {
-            if( tokenlist.size() != 1 || ( tokenlist.size() > 1 && tokenlist[1].type != Token::TOKEN_ID ) {
+            if( tokenlist.size() > 2 || ( tokenlist.size() == 2 && tokenlist[1].type != Token::TOKEN_ID ) ) {
                 s = new Statement( Statement::TYPE_ERROR );
                 s->detail = "Too many arguments to `list'";
             } else {
                 s = new Statement( Statement::STMNT_LIST );
-                s->leftChild = new Statement( Statement::TYPE_SYMBOL );
-                s->leftChild->symbol = Symbol( Symbol::SYM_ID, tokenlist[1].value_string );
+                /* Only the global scope is currently supported */
+                if( tokenlist.size() > 1 )
+                    s->leftChild =parseReference( scope, tokenlist[1].value_string );
             }
         }
         else if( tokenlist[0].value_string == "classlist" ) {
@@ -183,13 +220,79 @@ Parser::parse( const Token::list& tokenlist ) {
 }
 
 Statement*
-Parser::parseReference( const std::string& str ) {
+Parser::parseReference( Object* local_scope, const std::string& str ) {
+    if( str.empty() )
+        return 0;
+    Statement *s;
+    Object *obj = local_scope->getChildByName( str );
+    if( obj ) {
+        s = new Statement( Statement::TYPE_SYMBOL );
+        s->symbol = Symbol( obj );
+    }
+    else {
+        s = new Statement( Statement::TYPE_ERROR );
+        s->detail = "Undefined reference to `" + str + "'";
+    }
+    return s;
+}
 
+Statement*
+Parser::parseMemberReference( Object* local_scope, const std::string& str ) {
+    if( str.empty() )
+        return 0;
+    Statement *s;
+    size_t pos = str.find_last_of( MEMBER_CHARS );
+    std::string member;
+    Object *obj;
+    if( pos == std::string::npos ) {
+        member =str;
+        obj =local_scope;
+    }
+    else {
+        obj = local_scope->getChildByName( str.substr( 0, pos ) );
+        member =str.substr( pos+1 );
+    }
+
+    if( obj ) {
+        s = new Statement( Statement::TYPE_SYMBOL );
+        s->symbol = Symbol( obj, member );
+    }
+    else {
+        s = new Statement( Statement::TYPE_ERROR );
+        s->detail = "Undefined reference to `" + str + "'";
+    }
+    return s;
 }
 
 Statement*
 Parser::parseArglist( const Token::list& ) {
 
+}
+
+void
+Parser::generateManifest( std::iostream &out, Object* obj ) {
+
+    for( int k =1; k <= 3; k++ ) {
+        stringlist_t list =obj->listMeta( (Object::META_TYPE)k );
+        if( list.empty() )
+            continue;
+        std::string suffix;
+        switch( k ) {
+            case Object::META_CHILD:
+                out << "children:" << std::endl;
+                break;
+            case Object::META_METHOD:
+                out << "methods:" << std::endl;
+                suffix ="()";
+                break;
+            case Object::META_PROPERTY:
+                out << "properties:" << std::endl;
+                break;
+        }
+        stringlist_t::iterator it;
+        for( it = list.begin(); it != list.end(); it++ )
+            out << "\t" << obj->getName() << "." << *it << suffix << std::endl;
+    }
 }
 
 Token::list

@@ -7,17 +7,40 @@
 #include <stdint.h>
 #include "types.h"
 
-class MetaArgument {
+class Object;
+
+class Variant {
     public:
-        typedef std::vector<MetaArgument> list;
-        enum ARGTYPE {
-            ARGTYPE_REAL,
-            ARGTYPE_STRING
+        typedef std::vector<Variant> list;
+        enum TYPE {
+            TYPE_NONE,
+            TYPE_REAL,
+            TYPE_STRING,
+            TYPE_OBJECT
         };
 
-        ARGTYPE type;
+        Variant() : _type( TYPE_NONE ) {}
+        Variant( TYPE t ) : _type( t ) {}
+        Variant( const std::string & str ) : _type( TYPE_STRING ), value_string( str ) {}
+        Variant( double d ) : _type( TYPE_REAL ), value_real( d ) {}
+        Variant( Object* obj ) : _type( TYPE_OBJECT ), value_ptr( obj ) {}
+
+        TYPE type() { return _type; }
+        bool isA( TYPE t ) { return _type == t; }
+
+        void set( const std::string& str ) { _type = TYPE_STRING; value_string = str; }
+        void set( double d ) { _type = TYPE_REAL; value_real = d; }
+        void set( Object* obj ) { _type = TYPE_OBJECT; value_ptr= obj; }
+
+        std::string toString();
+        double toReal();
+        Object* toObject();
+
+    private:
+        TYPE _type;
         double value_real;
         std::string value_string;
+        Object *value_ptr;
 };
 
 class Object {
@@ -40,11 +63,13 @@ class Object {
         Object* getChildByName( const std::string& name ) const;
         stringlist_t listChildren( ) const;
 
-        virtual bool setMeta( const std::string& property, const std::string& value );
-        virtual std::string getMeta( const std::string& property ) const;
+        virtual bool setMeta( const std::string& property, const Variant& value );
+        virtual Variant getMeta( const std::string& property ) const;
         stringlist_t listMeta( META_TYPE ) const;
         stringlist_t listMeta( META_TYPE, const std::string& name ) const;
-        virtual bool callMeta( const std::string& method, MetaArgument::list args );
+        bool hasMeta( META_TYPE, const std::string& reference ) const;
+        bool hasMeta( META_TYPE, const std::string& reference, const std::string& name ) const;
+        virtual bool callMeta( const std::string& method, Variant::list args );
         
         /*virtual int RTTI() const =0;
         inline bool isA( int type ) const { return type == RTTI(); }*/
