@@ -5,8 +5,8 @@
 #include "object.h"
 
 #define DELIM_CHARS " ,;"
-#define POPEN_CHARS "(<"
-#define PCLOSE_CHARS ")>"
+#define POPEN_CHARS "("
+#define PCLOSE_CHARS ")"
 #define MEMBER_CHARS ".:/"
 #define STRESCAPE_CHARS "\"'"
 
@@ -105,7 +105,7 @@ class Parser {
         void setScope( Object* s ) { scope =s; }
 
         bool evaluateNext();
-        bool evaluate( Statement* );
+        bool evaluate( Variant& result, bool& last, Statement* );
         Statement* parse( const Token::list& );
 
     private:
@@ -113,9 +113,13 @@ class Parser {
         Object *scope;
         std::iostream stream;
 
-        Statement* parseArglist( const Token::list& );
+        Statement* parseArglist( Object* local_scope, const Token::list::const_iterator& begin, const Token::list::const_iterator& end, Token::list::const_iterator *last =0 );
         Statement* parseReference( Object* local_scope, const std::string& str );
-        Statement* parseMemberReference( Object* local_scope, const std::string& str );
+        Statement* parseMemberReference( Object* local_scope, const std::string& str, int mask = Object::META_ALL, bool existence =true );
         void generateManifest( std::iostream &out, Object* obj );
+        static Variant dereference( const Symbol& );
+        static Variant functioncall( const Symbol& func, const Variant::list &args );
+        static bool dereferenceArglist( Variant::list& dest, Statement* );
+        static bool listErrors( stringlist_t& dest, Statement* );
         static Token::list tokenize( const std::string& );
 };

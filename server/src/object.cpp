@@ -2,7 +2,7 @@
 #include "parser.h"
 
 std::string 
-Variant::toString() {
+Variant::toString() const{
     switch( _type ) {
         case TYPE_REAL:
             return std::to_string( (long double)value_real );
@@ -21,7 +21,7 @@ Variant::toString() {
 }
 
 double 
-Variant::toReal() {
+Variant::toReal() const {
     switch( _type ) {
         case TYPE_REAL:
             return value_real;
@@ -37,8 +37,44 @@ Variant::toReal() {
     return 0.;
 }
 
+bool 
+Variant::toBool() const {
+    switch( _type ) {
+        case TYPE_REAL:
+            return (bool)value_real;
+            break;
+        case TYPE_STRING:
+            return (bool)atoi( value_string.c_str() );
+            break;
+        case TYPE_OBJECT:
+            if( value_ptr )
+                return true;
+            break;
+        default:
+            break;
+    }
+    return false;
+}
+
+int
+Variant::toInt() const {
+    switch( _type ) {
+        case TYPE_REAL:
+            return (int)value_real;
+            break;
+        case TYPE_STRING:
+            return atoi( value_string.c_str() );
+            break;
+        case TYPE_OBJECT:
+            break;
+        default:
+            break;
+    }
+    return 0;
+}
+
 Object* 
-Variant::toObject() {
+Variant::toObject() const {
     switch( _type ) {
         case TYPE_REAL:
             break;
@@ -52,6 +88,27 @@ Variant::toObject() {
     }
     return 0;
 }
+
+std::ostream & operator<<(std::ostream &os, const Variant& v)
+{
+        switch( v.type() ) {
+            case Variant::TYPE_REAL:
+                return os << v.value_real;
+            case Variant::TYPE_STRING:
+                return os << v.value_string;
+            case Variant::TYPE_OBJECT:
+                if( v.value_ptr )
+                    return os << "<" << v.value_ptr->getName() << ">";
+                else
+                    return os << "<undefined>";
+            default:
+                break;
+        }
+        return os;
+}
+
+// Implementation of class Object
+
 Object::Object( const std::string& name, Object* parent ) : parent( parent ), name( name ) {
     if( parent )
         parent->children.insert( this );
@@ -114,7 +171,8 @@ Object::update( float deltatime ) {
         (*it)->update( deltatime );
 }
 
-stringlist_t Object::listMeta( META_TYPE meta, const std::string& reference ) const {
+stringlist_t 
+Object::listMeta( META_TYPE meta, const std::string& reference ) const {
     Object *obj =getChildByName( reference );
     if( obj )
         return obj->listMeta( meta );
@@ -124,45 +182,82 @@ stringlist_t Object::listMeta( META_TYPE meta, const std::string& reference ) co
 
 bool 
 Object::setMeta( const std::string& property, const Variant& value ) {
-    return false;
+   if( !hasProperty( property ) )
+       return false;
+   property_list[property] =value;
+   return true;
 }
 
 Variant 
 Object::getMeta( const std::string& property ) const {
-    return Variant();
+    if( !hasProperty( property ) )
+        return Variant();
+    return property_list.at(property);
 }
 
 stringlist_t 
 Object::listMeta( META_TYPE t ) const {
     switch( t ) {
-        case META_NONE:
-            break;
         case META_CHILD:
             return listChildren();
         case META_PROPERTY:
-            return property_list;
+            return listProperties();
         case META_METHOD:
             return method_list;
+        default: break;
     }
     return stringlist_t();
 }
 
 bool 
 Object::hasMeta( META_TYPE type, const std::string& name ) const {
+    if( type == META_PROPERTY )
+        return hasProperty( name );
     stringlist_t list = listMeta( type );
     return std::find( list.begin(), list.end(), name ) != list.end();
 }
 
 bool 
 Object::hasMeta( META_TYPE type, const std::string& reference, const std::string& name ) const {
+    if( type == META_PROPERTY ) {    
+        Object *obj =getChildByName( reference );
+        if( obj )
+            return obj->hasProperty( name );
+        return false;
+    }
     stringlist_t list = listMeta( type, reference );
     return std::find( list.begin(), list.end(), name ) != list.end();
 }
 
-bool 
-Object::callMeta( const std::string&, Variant::list ) {
-    return false;
+Variant 
+Object::callMeta( const std::string&, const Variant::list& ) {
+    return Variant();
 }
 
+bool
+Object::hasProperty( const std::string& name ) const {
+    return property_list.count( name ) != 0;
+}
+
+void
+Object::addProperty( const std::string& name, Variant v ) {
+    if( !hasProperty( name ) )
+        property_list[name] = v;
+}
+
+void
+Object::removeProperty( const std::string& name ) {
+    if( hasProperty( name ) )
+        property_list.erase( name );
+}
+
+stringlist_t
+Object::listProperties() const {
+    PropertyList::const_iterator it;
+    stringlist_t list;
+    for( it = property_list.begin(); it != property_list.end(); it++ )
+        list.push_back( it->first );
+    return list;
+}
 
 ObjectFactory::list ObjectFactory::factory_list;

@@ -3,6 +3,7 @@
 #include <string>
 #include <set>
 #include <vector>
+#include <map>
 #include <algorithm>
 #include <stdint.h>
 #include "types.h"
@@ -25,31 +26,38 @@ class Variant {
         Variant( double d ) : _type( TYPE_REAL ), value_real( d ) {}
         Variant( Object* obj ) : _type( TYPE_OBJECT ), value_ptr( obj ) {}
 
-        TYPE type() { return _type; }
-        bool isA( TYPE t ) { return _type == t; }
+        TYPE type() const { return _type; }
+        bool isA( TYPE t ) const { return _type == t; }
 
         void set( const std::string& str ) { _type = TYPE_STRING; value_string = str; }
         void set( double d ) { _type = TYPE_REAL; value_real = d; }
         void set( Object* obj ) { _type = TYPE_OBJECT; value_ptr= obj; }
 
-        std::string toString();
-        double toReal();
-        Object* toObject();
+        std::string toString() const;
+        double toReal() const;
+        bool toBool() const;
+        int toInt() const;
+        Object* toObject() const;
 
     private:
         TYPE _type;
         double value_real;
         std::string value_string;
         Object *value_ptr;
+
+        friend std::ostream & operator<<(std::ostream &os, const Variant& v);
 };
+
+std::ostream & operator<<(std::ostream &os, const Variant& v);
 
 class Object {
     public:
         enum META_TYPE {
-            META_NONE,
-            META_PROPERTY,
-            META_METHOD,
-            META_CHILD
+            META_NONE =0x0,
+            META_PROPERTY =0x1,
+            META_METHOD =0x2,
+            META_CHILD =0x4,
+            META_ALL =0xf
         };
         Object( const std::string& name, Object* parent =0 );
         ~Object();
@@ -59,6 +67,7 @@ class Object {
         virtual void update( float deltatime );
         
         typedef std::set<Object*> Objects;
+        typedef std::map<std::string, Variant> PropertyList;
         Objects getChildren( ) const;
         Object* getChildByName( const std::string& name ) const;
         stringlist_t listChildren( ) const;
@@ -69,16 +78,19 @@ class Object {
         stringlist_t listMeta( META_TYPE, const std::string& name ) const;
         bool hasMeta( META_TYPE, const std::string& reference ) const;
         bool hasMeta( META_TYPE, const std::string& reference, const std::string& name ) const;
-        virtual bool callMeta( const std::string& method, Variant::list args );
+        virtual Variant callMeta( const std::string& method, const Variant::list& args );
         
-        /*virtual int RTTI() const =0;
-        inline bool isA( int type ) const { return type == RTTI(); }*/
     
     protected:
+        virtual bool hasProperty( const std::string& ) const;
+        virtual void addProperty( const std::string&, Variant = Variant() );
+        virtual void removeProperty( const std::string& );
+        virtual stringlist_t listProperties() const;
+
         Objects children;
         Object* parent;
         std::string name;
-        stringlist_t property_list;
+        PropertyList property_list;
         stringlist_t method_list;
     
 };

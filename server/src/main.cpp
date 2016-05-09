@@ -28,10 +28,32 @@ newConnection( ClientSocket* c, Object* scope ) {
 class MyClass : public Object {
     public:
         MyClass( const std::string& name, Object* obj ) : Object( name, obj ) {
-            property_list.push_back( "name" );
-            property_list.push_back( "some_value" );
             method_list.push_back( "func" );
-            method_list.push_back( "draw" );
+            method_list.push_back( "me" );
+            method_list.push_back( "add2d" );
+            addProperty( "name" );
+            addProperty( "foo" );
+            addProperty( "bar" );
+        }
+
+        virtual Variant callMeta( const std::string& method, const Variant::list& args ) {
+            std::cerr << method << " called" << std::endl;
+            if( method == "func" ) {
+                if( args.size() )
+                    return Variant( "You said: " + args[0].toString() );
+                else
+                    return Variant( "Hello world!" );
+            } else if( method == "me" ) {
+                return Variant( this );
+
+            } else if( method == "add2d" ) {
+                if( args.size() > 1 )
+                    return Variant( 5. + args[0].toReal() + args[1].toReal() );
+                else
+                    return Variant();
+            }
+            else
+                return Object::callMeta( method, args );
         }
 };
 
@@ -47,6 +69,8 @@ main( int argc, char** argv ) {
     /* */
 
     uint32_t portnum =5678;
+    if( argc > 1 && atoi( argv[1] ) != 0 )
+        portnum =atoi( argv[1] );
 
     ListenSocket sock;
     if( !sock.bind( portnum ) || !sock.listen()  ) {
@@ -76,7 +100,7 @@ main( int argc, char** argv ) {
         for( it = connection_list.begin(); it != connection_list.end(); )
             if( !(*it).connection->isOpen() ) {
                 delete (*it).connection;
-                delete (*it).thread;
+ //               delete (*it).thread;
                 it =connection_list.erase( it );
             }
             else
@@ -86,7 +110,7 @@ main( int argc, char** argv ) {
     conthreadlist_t::iterator it;
     for( it = connection_list.begin(); it != connection_list.end(); ) {
         delete (*it).connection;
-        delete (*it).thread;
+//        delete (*it).thread;
     }
 
     return 0;
