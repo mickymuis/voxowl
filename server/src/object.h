@@ -82,10 +82,13 @@ class Object {
         
     
     protected:
+        Object( const Object& rhs ) {}
+        void operator=( const Object& rhs ) {}
         virtual bool hasProperty( const std::string& ) const;
         virtual void addProperty( const std::string&, Variant = Variant() );
         virtual void removeProperty( const std::string& );
         virtual stringlist_t listProperties() const;
+        virtual void addMethod( const std::string& );
 
         Objects children;
         Object* parent;

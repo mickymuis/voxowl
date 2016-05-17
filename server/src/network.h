@@ -6,25 +6,51 @@
 
 #include "socketbuf.h"
 
-class ClientSocket {
+class Socket {
+    public:
+        enum STATE {
+            OPEN,
+            CLOSED,
+            ERROR
+        };
+        Socket( int fd, sockaddr_in addr );
+        Socket( int fd );
+        Socket ();
+        ~Socket();
+
+        void setSocket( int fd );
+        void setRemoteAddr( sockaddr_in addr );
+
+        int getSocket() const;
+        sockaddr_in getRemoteAddr() const;
+
+        bool poll( int timeout_sec =0, int timeout_usec =0 );
+
+        bool setBlocking( bool );
+        bool isOpen() const;
+        STATE getState() const { return state; }
+        void setState( STATE s ) { state =s; }
+        void close();
+
+    protected:
+        int sockfd;
+        sockaddr_in remote_addr;
+        STATE state;
+};
+
+class ClientSocket : public Socket {
     public:
         ClientSocket( int fd, sockaddr_in addr );
         ~ClientSocket();
 
-        bool isOpen( ) const { return open; }
-        void close( );
-
         socketbuf* getBuffer() { return &sockbuf; }
 
     private:
-        int sockfd;
-        sockaddr_in client_addr;
-        bool open;
         socketbuf sockbuf;
 
 };
 
-class ListenSocket {
+class ListenSocket : public Socket {
     public:
         ListenSocket();
         ~ListenSocket();
@@ -37,6 +63,6 @@ class ListenSocket {
         void close();
 
     private:
-        int sockfd;
         sockaddr_in listen_addr;
 };
+

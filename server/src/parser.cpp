@@ -27,36 +27,11 @@ Token::fromString( const std::string& str ) {
     return t;
 }
 
-Parser::Parser( std::basic_streambuf<char> *buf, Object* s )
-    : iobuf( buf ),
-    scope( s ),
-    stream( buf )
+Parser::Parser( Object* s )
+    :scope( s )
 {}
 
 Parser::~Parser() {}
-
-bool
-Parser::evaluateNext() {
-    if( stream.eof() )
-        return false;
-
-    std::string buffer;
-    std::getline( stream, buffer );
-    buffer.resize( buffer.size() -1);
-    std::cout << buffer << std::endl;
-
-    bool last =false, error;
-    Variant v;
-    Statement* s;
-
-    s =parse( tokenize( buffer ) );
-    if( s ) {
-        error =evaluate( v, last, s );
-        stream << v << std::endl;
-        delete s;
-    }
-    return !last;
-}
 
 bool /*error*/ 
 Parser::evaluate( Variant& result, bool &last, Statement *s ) {
@@ -68,8 +43,11 @@ Parser::evaluate( Variant& result, bool &last, Statement *s ) {
     if( listErrors( errs, s ) ) {
         error =true;
         std::string err_str;
-        for( unsigned int i=0; i < errs.size(); i++ )
-            out_string << errs[i] << std::endl;
+        for( unsigned int i=0; i < errs.size(); i++ ) {
+            out_string << errs[i];
+            if( i < errs.size() - 1 )
+                out_string << std::endl;
+        }
     }
     else {
         switch( s->type ) {
@@ -401,7 +379,6 @@ Parser::parseArglist( Object* local_scope, const Token::list::const_iterator& be
                     s->leftChild = parseReference( local_scope, t.value_string );
                 // Property reference
                 } else {
-                    std::cerr << "Property reference in arglist: " << t.value_string << std::endl;
                     s->leftChild = parseMemberReference( local_scope, t.value_string, Object::META_PROPERTY );
                 }
                 break;

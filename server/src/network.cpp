@@ -1,4 +1,5 @@
 #include "network.h"
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,21 +7,113 @@
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <fcntl.h>
+
+#define LISTEN_SOCKET_BACKLOG 4
+
+// Socket implementation
+
+Socket::Socket( int fd, sockaddr_in addr ) 
+    : sockfd( fd ), remote_addr( addr )
+{}
+
+Socket::Socket( int fd ) 
+    : sockfd( fd ) 
+{}
+
+Socket::Socket () {}
+
+Socket::~Socket() {
+    close();
+}
+
+void 
+Socket::setSocket( int fd ) {
+    sockfd =fd;
+}
+
+void 
+Socket::setRemoteAddr( sockaddr_in addr ) {
+    remote_addr =addr;
+}
+
+int 
+Socket::getSocket() const {
+    return sockfd;
+}
+
+sockaddr_in 
+Socket::getRemoteAddr() const {
+    return remote_addr;
+}
+
+bool 
+Socket::poll(int timeout_sec, int timeout_usec ) {
+    int result;
+    struct timeval t;
+    t.tv_sec =(long)timeout_sec;
+    t.tv_usec =(long)timeout_usec;
+
+    fd_set rdfd;
+    FD_ZERO( &rdfd );
+    FD_SET( sockfd, &rdfd );
+
+    result =select( sockfd+1, &rdfd, 0, 0, &t );
+
+    if( result == -1 ) {
+        switch( errno ) {
+            case EBADF:
+                state =CLOSED;
+                break;
+            case EAGAIN:
+                break;
+            default:
+                state =ERROR;
+                std::cerr << strerror( errno ) << std::endl;
+        }
+    } else
+        state =OPEN;
+
+    return result == 1;
+}
+
+bool
+Socket::setBlocking( bool blocking ) {
+    int flags; 
+
+    if ((flags = fcntl(sockfd, F_GETFL, 0)) < 0) 
+        return false;
+
+    if( !blocking ) {
+        if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) < 0) 
+            return false; 
+    } else {
+        if (fcntl(sockfd, F_SETFL, flags & (~O_NONBLOCK)) < 0) 
+            return false; 
+    }
+    return true;
+}
+
+bool 
+Socket::isOpen() const {
+    return state == OPEN;
+}
+
+void 
+Socket::close() {
+    ::close( sockfd );
+    state =CLOSED;
+}
+
 
 // Implementation of ClientSocket
 
-ClientSocket::ClientSocket( int fd, sockaddr_in addr ) : sockfd( fd ), client_addr( addr ), open( true ) {
+ClientSocket::ClientSocket( int fd, sockaddr_in addr ) : Socket( fd, addr ) {
     sockbuf.set_socket( fd );
 }
 
 ClientSocket::~ClientSocket() {
     close();
-}
-
-void
-ClientSocket::close() {
-    open =false;
-    ::close( sockfd );
 }
 
 // Implementation of ListenSocket
@@ -48,7 +141,7 @@ ListenSocket::bind( int portnum ) {
 
 bool 
 ListenSocket::listen() {
-    return( ::listen( sockfd, 5 ) == 0 );
+    return( ::listen( sockfd, LISTEN_SOCKET_BACKLOG  ) == 0 );
 }
 
 ClientSocket* 
@@ -66,3 +159,5 @@ void
 ListenSocket::close() {
     ::close( sockfd );
 }
+
+

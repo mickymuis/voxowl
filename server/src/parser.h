@@ -99,19 +99,20 @@ class Statement {
 
 class Parser {
     public:
-        Parser( std::basic_streambuf<char>* buffer, Object *scope =0 );
+        Parser( /*std::basic_streambuf<char>* buffer,*/ Object *scope =0 );
         ~Parser();
 
         void setScope( Object* s ) { scope =s; }
 
-        bool evaluateNext();
+        //bool evaluateNext();
         bool evaluate( Variant& result, bool& last, Statement* );
         Statement* parse( const Token::list& );
+        static Token::list tokenize( const std::string& );
 
     private:
-        std::basic_streambuf<char>* iobuf;
+        //std::basic_streambuf<char>* iobuf;
         Object *scope;
-        std::iostream stream;
+        //std::iostream stream;
 
         Statement* parseArglist( Object* local_scope, const Token::list::const_iterator& begin, const Token::list::const_iterator& end, Token::list::const_iterator *last =0 );
         Statement* parseReference( Object* local_scope, const std::string& str );
@@ -121,5 +122,4 @@ class Parser {
         static Variant functioncall( const Symbol& func, const Variant::list &args );
         static bool dereferenceArglist( Variant::list& dest, Statement* );
         static bool listErrors( stringlist_t& dest, Statement* );
-        static Token::list tokenize( const std::string& );
 };

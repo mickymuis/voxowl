@@ -1,117 +1,118 @@
 #include <stdint.h>
 #include <string.h>
 #include <thread>
+#include <chrono>
 #include <errno.h>
 #include <iostream>
 #include <list>
 
-#include "network.h"
+#include "server.h"
 #include "platform.h"
 #include "types.h"
 #include "parser.h"
+#include "packetbuffer.h"
 
-typedef struct {
-    ClientSocket *connection;
-    std::thread *thread;
-} conthread_t;
-typedef std::list<conthread_t> conthreadlist_t;
+Parser parser;
 
-void
-newConnection( ClientSocket* c, Object* scope ) {
-    Parser h( c->getBuffer(), scope );
-    while( h.evaluateNext() ) {}
+void 
+incoming_packet( const Packet& p_recv ) {
 
-    c->close();
-    std::cerr << "Connection closed" << std::endl;
+    if( p_recv.mode == Packet::CHAR ) {
+        std::string str( (char*)p_recv.payload, p_recv.size );
+        std::cerr << str.c_str() << std::endl;
+            
+        bool last =false, error;
+        Variant v;
+        Statement* s;
+
+        s =parser.parse( parser.tokenize( str ) );
+        if( s ) {
+            error =parser.evaluate( v, last, s );
+            //std::cerr << v << std::endl;
+
+            if( last && p_recv.connection )
+                p_recv.connection->closeDeferred();
+            else if( p_recv.connection && p_recv.connection->pbuffer ) {
+                Packet packet;
+
+                packet.connection =p_recv.connection;
+                packet.direction =Packet::SEND;
+                packet.mode =Packet::CHAR;
+                std::string buffer = v.toString();
+                packet.size =buffer.length()+1;
+                packet.payload =(char*)malloc( (buffer.length()+1) * sizeof( char ) );
+                memcpy( packet.payload, buffer.c_str(), packet.size * sizeof( char ) );
+                packet.own_payload =true;
+                p_recv.connection->pbuffer->enqueue( packet );
+            }
+
+            delete s;
+        }
+    }
 }
 
-class MyClass : public Object {
-    public:
-        MyClass( const std::string& name, Object* obj ) : Object( name, obj ) {
-            method_list.push_back( "func" );
-            method_list.push_back( "me" );
-            method_list.push_back( "add2d" );
-            addProperty( "name" );
-            addProperty( "foo" );
-            addProperty( "bar" );
-        }
+void 
+outgoing_packet( const Packet& p_send ) {
+    if( !p_send.connection || !p_send.connection->pbuffer )
+        return;
 
-        virtual Variant callMeta( const std::string& method, const Variant::list& args ) {
-            std::cerr << method << " called" << std::endl;
-            if( method == "func" ) {
-                if( args.size() )
-                    return Variant( "You said: " + args[0].toString() );
-                else
-                    return Variant( "Hello world!" );
-            } else if( method == "me" ) {
-                return Variant( this );
+    /* Delegate this packet to the queue of the outgoing connection */
+    p_send.connection->pbuffer->enqueue( p_send );
+}
 
-            } else if( method == "add2d" ) {
-                if( args.size() > 1 )
-                    return Variant( 5. + args[0].toReal() + args[1].toReal() );
-                else
-                    return Variant();
-            }
-            else
-                return Object::callMeta( method, args );
+void 
+dummy_data_thread( Server *server ) {
+    Packet packet;
+    packet.direction =Packet::SEND;
+    packet.mode =Packet::CHAR;
+    packet.payload =(void*)"Molly!";
+    packet.own_payload =false;
+    packet.size =7;
+
+    while( true ) {
+        //std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
+        sleep( 1 );
+
+        Connection *conn =server->getDataConnection();
+        if( conn ) {
+            packet.connection =conn;
+            conn->pbuffer->enqueue( packet );
+            std::cerr << "Enqueue yar!" << std::endl;
         }
-};
+    }
+}
 
 int
 main( int argc, char** argv ) {
 
-    /* Test code */
-
+    /* Setup the environment */
     Object root("root");
-    MyClass *myinstance = new MyClass( "myclass1", &root );
-    ObjectFactory::newFactory( new ObjectFactoryT<MyClass>("MyClass") );
+    Server server( "server", &root );
+    PacketBuffer pbuffer;
 
     /* */
-
     uint32_t portnum =5678;
     if( argc > 1 && atoi( argv[1] ) != 0 )
         portnum =atoi( argv[1] );
 
-    ListenSocket sock;
-    if( !sock.bind( portnum ) || !sock.listen()  ) {
-        std::cerr << "Could not bind to port " << portnum << std::endl;
-        std::cerr << strerror( errno ) << std::endl;
-        exit( 1 );
-    }
+    /* Setup the packet buffer and run it in another thread */
+    parser.setScope( &root );
+    pbuffer.setIncomingPacketHandler( &incoming_packet );
+    pbuffer.setOutgoingPacketHandler( &outgoing_packet );
+    std::thread pbuffer_thread( pbufferMain, &pbuffer );
 
-    std::cerr << VERSION_FULL_NAME << " listening to port " << portnum << std::endl;
+    // dummy
+    std::thread dummy( &dummy_data_thread, &server );
 
-    conthreadlist_t connection_list;
+    /* Setup the server and run the listener in this thread */
+    server.setPort( portnum );
+    server.setLogStream( std::cerr );
+    server.setControlPBuffer( &pbuffer );
+    server.mainloop( &root );
 
-    while( 1 ) {
-        ClientSocket *c;
-        if( ( c = sock.accept() ) ) {
-            std::cerr << "Accepting new connection" << std::endl;
-            conthread_t t;
-            t.connection =c;
-            t.thread =new std::thread( newConnection, c, &root );
-            connection_list.push_back( t );
-        }
-        else
-            break;
-
-        // Cleanup any closed connections
-        conthreadlist_t::iterator it;
-        for( it = connection_list.begin(); it != connection_list.end(); )
-            if( !(*it).connection->isOpen() ) {
-                delete (*it).connection;
- //               delete (*it).thread;
-                it =connection_list.erase( it );
-            }
-            else
-                it++;
-    }
-
-    conthreadlist_t::iterator it;
-    for( it = connection_list.begin(); it != connection_list.end(); ) {
-        delete (*it).connection;
-//        delete (*it).thread;
-    }
+    /* Wait for any threads to join */
+    pbuffer.stopThread();
+    pbuffer_thread.join();
 
     return 0;
 }

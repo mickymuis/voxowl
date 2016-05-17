@@ -260,4 +260,11 @@ Object::listProperties() const {
     return list;
 }
 
+void
+Object::addMethod( const std::string& name ) {
+    if( !hasMeta( META_METHOD, name ) ) {
+        method_list.push_back( name );
+    }
+}
+
 ObjectFactory::list ObjectFactory::factory_list;

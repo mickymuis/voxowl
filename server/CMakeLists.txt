@@ -19,7 +19,9 @@ cuda_add_executable(
     voxowl
     src/main.cpp
     src/object.cpp
+    src/packetbuffer.cpp
     src/network.cpp
+    src/server.cpp
     src/parser.cpp
     src/framebuffer.cu
     src/bmp.cu
