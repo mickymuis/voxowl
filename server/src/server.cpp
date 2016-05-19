@@ -150,11 +150,14 @@ Server::mainloop( Object* root ) {
         // It seems a new connection attempt is being made
         ClientSocket *csock;
         if( ( csock = sock.accept() ) ) {
+            std::lock_guard<std::mutex> lock( write_lock );
             log << "Accepting new connection" << std::endl;
             Connection *c = new Connection( &connections );
             c->socket =csock;
             c->pbuffer =new PacketBuffer();
             c->pbuffer->setOutgoingPacketHandler( &connectionSendFunc );
+            if( !data_connection )
+                setDataConnection( c );
             c->thread =new std::thread( connectionMain, c, this );
             connection_list.push_back( c );
         }

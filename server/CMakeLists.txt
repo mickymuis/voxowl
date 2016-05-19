@@ -2,11 +2,11 @@ cmake_minimum_required(VERSION 2.8)
 find_package(CUDA REQUIRED)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb")
 # Pass options to NVCC
-#set(
-#    CUDA_NVCC_FLAGS
-#    ${CUDA_NVCC_FLAGS};
-#    -ccbin g++44 -x cu -O3 -gencode arch=compute_20,code=sm_20
-#    )
+set(
+    CUDA_NVCC_FLAGS
+    ${CUDA_NVCC_FLAGS};
+    -x cu -O3 -gencode arch=compute_20,code=sm_20
+    )
 # Specify include directories
 include_directories(
     src
@@ -23,7 +23,8 @@ cuda_add_executable(
     src/network.cpp
     src/server.cpp
     src/parser.cpp
-    src/framebuffer.cu
+    src/framebuffer.cpp
+    src/main-gpu.cu
     src/bmp.cu
     )
 

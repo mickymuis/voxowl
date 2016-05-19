@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "platform.h"
 #include "bmp.h"
+#include "main-gpu.h"
 #include <vector>
 #include <fstream>
 #include <glm/mat4x4.hpp>
@@ -424,8 +425,8 @@ computeFragment( raycastInfo_t raycast_info, volume_t volume, framebuffer_t fram
     surf2Dwrite( rgba, fb_surface, x*4, y, cudaBoundaryModeTrap );
 }
 
-int 
-main( int argc, char **argv ) {
+extern int 
+main_gpu( int argc, char **argv ) {
 
     const int width =1024;
     const int height =768;

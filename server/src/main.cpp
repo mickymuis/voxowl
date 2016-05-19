@@ -11,6 +11,7 @@
 #include "types.h"
 #include "parser.h"
 #include "packetbuffer.h"
+#include "main-gpu.h"
 
 Parser parser;
 
@@ -60,7 +61,7 @@ outgoing_packet( const Packet& p_send ) {
     p_send.connection->pbuffer->enqueue( p_send );
 }
 
-void 
+/*void 
 dummy_data_thread( Server *server ) {
     Packet packet;
     packet.direction =Packet::SEND;
@@ -80,7 +81,24 @@ dummy_data_thread( Server *server ) {
             std::cerr << "Enqueue yar!" << std::endl;
         }
     }
-}
+}*/
+
+/* Test class
+   class Gpu : public Object {
+    public:
+        Gpu( const char* name, Object* parent ) : Object( name, parent ) {
+            addMethod( "exec" );
+        }
+
+        virtual Variant callMeta( const std::string& method, const Variant::list& args ) {
+            if( method == "exec" ) {
+                main_gpu(0,0);
+                return Variant( "done" );
+            }
+            return Object::callMeta( method, args );
+        }
+};
+*/
 
 int
 main( int argc, char** argv ) {
@@ -89,6 +107,7 @@ main( int argc, char** argv ) {
     Object root("root");
     Server server( "server", &root );
     PacketBuffer pbuffer;
+    //Gpu gpu( "gpu", &root );
 
     /* */
     uint32_t portnum =5678;
@@ -102,7 +121,7 @@ main( int argc, char** argv ) {
     std::thread pbuffer_thread( pbufferMain, &pbuffer );
 
     // dummy
-    std::thread dummy( &dummy_data_thread, &server );
+    //std::thread dummy( &dummy_data_thread, &server );
 
     /* Setup the server and run the listener in this thread */
     server.setPort( portnum );
