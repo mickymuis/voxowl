@@ -26,6 +26,8 @@ class Socket {
 
         bool poll( int timeout_sec =0, int timeout_usec =0 );
 
+        bool writeBuffer( void* buffer, size_t size );
+
         bool setBlocking( bool );
         bool isOpen() const;
         STATE getState() const { return state; }
@@ -36,6 +38,8 @@ class Socket {
         int sockfd;
         sockaddr_in remote_addr;
         STATE state;
+
+        size_t block_size;
 };
 
 class ClientSocket : public Socket {

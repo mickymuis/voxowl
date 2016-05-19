@@ -14,12 +14,15 @@
 // Socket implementation
 
 Socket::Socket( int fd, sockaddr_in addr ) 
-    : sockfd( fd ), remote_addr( addr )
-{}
+    : remote_addr( addr )
+{
+    setSocket( fd );
+}
 
 Socket::Socket( int fd ) 
-    : sockfd( fd ) 
-{}
+{
+    setSocket( fd );
+}
 
 Socket::Socket () {}
 
@@ -29,6 +32,10 @@ Socket::~Socket() {
 
 void 
 Socket::setSocket( int fd ) {
+    unsigned int m = sizeof( block_size );
+    getsockopt(fd,SOL_SOCKET,SO_SNDBUF,(void *)&block_size, &m);
+
+    std::cerr << "Block size is " << block_size << std::endl;
     sockfd =fd;
 }
 
@@ -75,6 +82,40 @@ Socket::poll(int timeout_sec, int timeout_usec ) {
         state =OPEN;
 
     return result == 1;
+}
+
+bool Socket::writeBuffer( void* buffer, size_t size ) {
+    if( state != OPEN )
+        return false;
+
+    ssize_t result;
+    fd_set sdfd;
+    FD_ZERO( &sdfd );
+    FD_SET( sockfd, &sdfd );
+
+    size_t offs =0;
+    size_t len =0;
+    while( offs < size ) {
+
+        if( size - offs < block_size )
+            len = size - offs;
+        else
+            len = block_size;
+
+        // Block until the buffer is empty
+        result =select( sockfd+1, 0, &sdfd, 0, 0 );
+        if( result > 0 )
+            result =send( sockfd, (char*)buffer + offs, len, MSG_DONTWAIT );
+        
+        if( result < 0 ) {
+            std::cerr << "Socket::writeBuffer(): " << strerror( errno ) <<
+            std::endl;
+            state =ERROR;
+            return false;
+        }
+        offs += (size_t)result;
+    }
+    return true;
 }
 
 bool

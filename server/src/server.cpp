@@ -1,6 +1,6 @@
 #include "server.h"
 #include "parser.h"
-#include "platform.h"
+#include "voxowl.h"
 #include "packetbuffer.h"
 
 uint32_t
@@ -37,6 +37,14 @@ connectionSendFunc( const Packet& packet ) {
         std::string str( (char*)packet.payload, packet.size );
 
         stream << str << std::endl;
+    } else if( packet.mode == Packet::DATA ) {
+    
+        if( !packet.connection->socket->writeBuffer( packet.payload, packet.size ) ) {
+            std::cerr << "Error writing data packet to connection " << packet.connection->getName() << std::endl;
+        } else {
+
+            std::cerr << "Writing data packet to connection " << packet.connection->getName() << std::endl;
+        }
     }
 }
 
@@ -88,6 +96,9 @@ connectionMain( Connection* c, Server* server ) {
 
 //////
 
+Server* Server::instance_in_mainloop =0;
+std::mutex Server::static_lock;
+
 Server::Server( const std::string& name, Object* parent )
     : Object( name, parent ), _stop(false), log( std::cerr.rdbuf() ),
     connections( "connections", this ), data_connection( 0 ) {
@@ -116,6 +127,9 @@ Server::setPort( uint32_t p ) {
 bool 
 Server::mainloop( Object* root ) {
 
+    std::lock_guard<std::mutex> slock( static_lock );
+    instance_in_mainloop =this;
+
     ListenSocket sock;
     sock.setBlocking( false );
 
@@ -125,13 +139,13 @@ Server::mainloop( Object* root ) {
         exit( 1 );
     }
 
-    log << VERSION_FULL_NAME << " listening to port " << _portnum << std::endl;
+    log << VOXOWL_VERSION_FULL_NAME << " listening to port " << _portnum << std::endl;
 
     connection_list_t::iterator it;
     while( !_stop ) {
 
         // Cleanup any closed connections
-       /* We cannot do this because it's thread unsafe. We delete everything
+       /* We cannot do this because it's thread-unsafe. We delete everything
         * on exit, which may also be a potential problem. FIXME
         for( it = connection_list.begin(); it != connection_list.end(); ) {
             if( !(*it)->socket->isOpen() ) {
@@ -175,6 +189,8 @@ Server::mainloop( Object* root ) {
     }
 
     log << "All connections terminated." << std::endl;
+
+    instance_in_mainloop =0;
     return true;
 }
 
@@ -197,15 +213,19 @@ Server::callMeta( const std::string& method, const Variant::list& args ) {
         if( args.size() > 0 ) {
             Object *obj =args[0].toObject();
             //log << typeid(*obj).name() << " - " << typeid(Connection).name() << std::endl;
-            
-            if( typeid(*obj) == typeid(Connection) ) {
-                std::lock_guard<std::mutex> lock ( write_lock );
-                v.set( std::string( "Sending data to " ) +
-                obj->getName() );
-                Connection* conn= dynamic_cast<Connection*>(obj);
-                setDataConnection( conn );
-                return v;
-            }
+        
+            try {
+                if( typeid(*obj) == typeid(Connection) ) {
+                    std::lock_guard<std::mutex> lock ( write_lock );
+                    v.set( std::string( "Sending data to " ) +
+                    obj->getName() );
+                    Connection* conn= dynamic_cast<Connection*>(obj);
+                    setDataConnection( conn );
+                    return v;
+                }
+                else
+                    setDataConnection( 0 );
+            } catch( std::bad_typeid& e ) { setDataConnection( 0 ); }
         }
     }
 

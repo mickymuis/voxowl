@@ -24,6 +24,8 @@ class Variant {
         Variant( TYPE t ) : _type( t ) {}
         Variant( const std::string & str ) : _type( TYPE_STRING ), value_string( str ) {}
         Variant( double d ) : _type( TYPE_REAL ), value_real( d ) {}
+        Variant( unsigned int i ) : _type( TYPE_REAL ), value_real( (double)i ) {}
+        Variant( int i ) : _type( TYPE_REAL ), value_real( (double)i ) {}
         Variant( Object* obj ) : _type( TYPE_OBJECT ), value_ptr( obj ) {}
 
         TYPE type() const { return _type; }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "object.h"
+#include "voxowl.h"
 
 #include <string>
 #include <queue>
@@ -20,13 +21,15 @@ class Packet {
         } direction;
         
         enum MODE {
-            CHAR
+            CHAR,
+            DATA
         } mode;
 
         size_t size;
         Connection* connection;
         void *payload;
         bool own_payload;
+//        struct voxowl_data_header_t data_header;
 
         void cleanup() { if( own_payload ) free(payload); }
 };

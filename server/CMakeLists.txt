@@ -24,8 +24,12 @@ cuda_add_executable(
     src/server.cpp
     src/parser.cpp
     src/framebuffer.cpp
-    src/main-gpu.cu
-    src/bmp.cu
+    src/renderer.cpp
+    src/volume.cpp
+    src/mengersponge.cpp
+    src/bmp.cpp
+    src/raycast.c
+    src/raycast_cuda.cu
     )
 
 ## Compiler flags

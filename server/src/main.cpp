@@ -11,7 +11,8 @@
 #include "types.h"
 #include "parser.h"
 #include "packetbuffer.h"
-#include "main-gpu.h"
+#include "framebuffer.h"
+#include "renderer.h"
 
 Parser parser;
 
@@ -107,6 +108,14 @@ main( int argc, char** argv ) {
     Object root("root");
     Server server( "server", &root );
     PacketBuffer pbuffer;
+
+    Framebuffer fb( "framebuffer", &root );
+    fb.setSize( 800, 600 );
+    fb.setTarget( Framebuffer::TARGET_REMOTE );
+    fb.setMode( Framebuffer::MODE_PIXMAP );
+    fb.setPixelFormat( Framebuffer::PF_RGBA );
+    fb.reinitialize();
+
     //Gpu gpu( "gpu", &root );
 
     /* */

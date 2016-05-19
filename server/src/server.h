@@ -37,6 +37,8 @@ class Server : public Object {
         void setDataConnection( Connection* );
         Connection *getDataConnection() const { return data_connection; }
 
+        static Server* active() { return instance_in_mainloop; }
+
         virtual Variant callMeta( const std::string& method, const Variant::list& args );
 
     private:
@@ -53,6 +55,9 @@ class Server : public Object {
         PacketBuffer *pbuffer_control;
 
         std::mutex write_lock;
+
+        static Server* instance_in_mainloop;
+        static std::mutex static_lock;
 };
 
 class Connection : public Object {
@@ -61,6 +66,7 @@ class Connection : public Object {
         ~Connection();
 
         void closeDeferred() { should_close =true; }
+        bool isOpen() { return socket->isOpen(); }
 
         PacketBuffer *pbuffer;
 
