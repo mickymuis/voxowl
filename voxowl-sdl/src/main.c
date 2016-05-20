@@ -4,6 +4,7 @@
  */
  
 #include <SDL2/SDL.h>
+#include "network.h"
 
 SDL_Texture* _texture;
 
@@ -38,7 +39,7 @@ main ( int argc, char **argv ) {
 	}
 	
 	SDL_Window *window = SDL_CreateWindow( 
-		"scpviewer", 
+		"voxowl-sdl", 
 		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
 		width, height, SDL_WINDOW_SHOWN );
 		
