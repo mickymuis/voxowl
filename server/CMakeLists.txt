@@ -10,6 +10,7 @@ set(
 # Specify include directories
 include_directories(
     src
+    ../libvoxowl/include
     )
 # Specify library paths
 link_directories()
