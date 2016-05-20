@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 2.6)
 
-project (scpviewer)
+project (voxowl-sdl)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/src/cmake)
 find_package(SDL2)
 if(NOT SDL2_FOUND)
@@ -12,5 +12,7 @@ set (CMAKE_CXX_FLAGS "-std=c++0x")
 include_directories(${OPENGL_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIR})
 include_directories(${GLEW_INCLUDE_DIR})
-add_executable(scpviewer src/main.cpp)
+
+add_executable(scpviewer src/main.c)
+
 target_link_libraries (scpviewer ${SDL2_LIBRARY})
