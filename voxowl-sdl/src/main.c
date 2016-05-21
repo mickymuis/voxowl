@@ -4,7 +4,7 @@
  */
  
 #include <SDL2/SDL.h>
-#include "network.h"
+#include "voxowl_network.h"
 
 SDL_Texture* _texture;
 
@@ -28,10 +28,13 @@ main ( int argc, char **argv ) {
 
 	if( argc != 3 ) {
 		printf( "Usage: %s [server] [port]\n", *argv );
+                exit( -1 );
 	}
 	
 	int width =800, height =600;
 	_texture =0;
+
+        /* We'll setup SDL video first */
 	
 	if( SDL_Init( SDL_INIT_VIDEO ) ) {
 		printf( "SDL_Init() error: %s\n", SDL_GetError() );
@@ -50,7 +53,17 @@ main ( int argc, char **argv ) {
 		SDL_Quit();
 		return -1;
 	}
-	
+
+        /* Next, we setup the network connection */
+
+        struct voxowl_socket_t sock;
+        if( voxowl_connect_host( &sock, argv[1], argv[2] ) != 0 ) {
+          exit( -1 );
+        }
+
+        fprintf( stderr, "%s: connected to %s:%s\n", argv[0], argv[1], argv[2] );
+
+
 	SDL_Event e;
 	bool quit =false;
 	

@@ -12,7 +12,8 @@ set (CMAKE_CXX_FLAGS "-std=c++0x")
 include_directories(${OPENGL_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIR})
 include_directories(${GLEW_INCLUDE_DIR})
+include_directories("../libvoxowl/include")
 
-add_executable(scpviewer src/main.c)
+add_executable(voxowl-sdl src/main.c src/voxowl_network.c)
 
-target_link_libraries (scpviewer ${SDL2_LIBRARY})
+target_link_libraries (voxowl-sdl ${SDL2_LIBRARY})
