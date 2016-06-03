@@ -55,14 +55,14 @@ voxowl_connect_host( struct voxowl_socket_t* sock, const char* host, const char*
 
     if ((flags = fcntl(sfd, F_GETFL, 0)) < 0) {
         close( sfd );
-        fprintf( stderr, strerror( errno ) );
+        fprintf( stderr, "%s\n", strerror( errno ) );
         return -1;
     }
 
 
     if (fcntl(sfd, F_SETFL, flags | O_NONBLOCK) < 0) {
         close( sfd );
-        fprintf( stderr, strerror( errno ) );
+        fprintf( stderr, "%s\n", strerror( errno ) );
         return -1;
     }
 
@@ -81,9 +81,8 @@ voxowl_connect_host( struct voxowl_socket_t* sock, const char* host, const char*
 int
 voxowl_disconnect( struct voxowl_socket_t* sock ) {
     if( sock->is_open ) {
-        close( sock->sockfd );
-
         voxowl_sendline( sock, "quit", 4 );
+        close( sock->sockfd );
     }
 
     sock->is_open =false;
@@ -125,14 +124,16 @@ voxowl_peek_pktmode( struct voxowl_socket_t* sock, int* mesg_type ) {
 
     uint32_t peek;
     if( recv( sock->sockfd, (void*)&peek, 4, MSG_PEEK ) != 4 ) {
-        return -1;
+        return 0;
     }
     
-    fprintf( stderr, "Magic number: %x\n", peek );
+    fprintf( stderr, "Magic number: %x match %d\n", peek, peek == VOXOWL_PACKET_MAGIC );
 
     if( peek == VOXOWL_PACKET_MAGIC )
-        return VOXOWL_MODE_DATA;
-    return VOXOWL_MODE_CHAR;
+        *mesg_type = VOXOWL_MODE_DATA;
+    else
+        *mesg_type = VOXOWL_MODE_CHAR;
+    return 1;
 }
 
 int 
@@ -171,7 +172,7 @@ voxowl_readline( struct voxowl_socket_t* sock, char **str ) {
 
 int 
 voxowl_read_frame_header( struct voxowl_socket_t* sock, struct voxowl_frame_header_t* buffer ) {
-    return voxowl_read( sock, (void*)buffer, sizeof( struct voxowl_frame_header_t* ) );
+    return voxowl_read( sock, (void*)buffer, sizeof( struct voxowl_frame_header_t ) );
 }
 
 int 
