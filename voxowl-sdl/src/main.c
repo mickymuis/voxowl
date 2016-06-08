@@ -37,7 +37,7 @@ updateTexture( SDL_Renderer* render, frame_info_t *frame ) {
     if( width != frame->width || height != frame->height ) {
         if( _texture )
             SDL_DestroyTexture( _texture );
-        _texture = SDL_CreateTexture(render, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STREAMING, frame->width, frame->height);
+        _texture = SDL_CreateTexture(render, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, frame->width, frame->height);
     }
 
     SDL_UpdateTexture( _texture, NULL, frame->data, frame->width*3 );        
@@ -105,7 +105,9 @@ main ( int argc, char **argv ) {
             printf( "Usage: %s [server] [port]\n", *argv );
             exit( -1 );
     }
-    
+   
+    const char* refresh_cmd ="renderer.render()\nframebuffer.write()";
+
     frame_info_t frame;
     frame_init( &frame );
     _texture =0;
@@ -162,6 +164,7 @@ main ( int argc, char **argv ) {
                                             quit = true;
                                             break;
                                     case SDLK_r: {
+                                            voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
                                             break;
                                     }
                                     default:
