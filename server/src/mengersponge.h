@@ -1,4 +1,5 @@
 #pragma once
+#define GLM_FORCE_CXX98
 
 #include "volume.h"
 

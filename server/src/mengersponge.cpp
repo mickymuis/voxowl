@@ -35,7 +35,8 @@ MengerSponge::MengerSponge( const char *name, Object *parent )
     : Volume( name, parent ) {
     depth =1;
     mode =COLORS_RGBA;
-    memset( &volume, 0, sizeof( voxelmap_t ) );
+    //memset( &volume, 0, sizeof( voxelmap_t ) );
+    volume.data =NULL;
     makeSponge();
 }
 
@@ -66,7 +67,7 @@ MengerSponge::makeSponge() {
 
     glm::ivec3 size( s );
     
-    voxelmapCreate( &volume, VOXEL_RGBA_UINT32, size );
+    voxelmapCreate( &volume, VOXEL_RGBA_UINT32, s, s, s );
 
     for( int x=0; x < size.x; x++ )
         for( int y=0; y < size.y; y++ )

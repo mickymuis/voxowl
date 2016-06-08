@@ -1,6 +1,7 @@
 #include "voxel.h"
 
 /* Initialize volume and allocate its buffer */
+VOXOWL_HOST
 void 
 voxelmapCreate( voxelmap_t *v, voxel_format_t f, glm::ivec3 size ) {
     v->format =f;
@@ -8,6 +9,7 @@ voxelmapCreate( voxelmap_t *v, voxel_format_t f, glm::ivec3 size ) {
     v->data =malloc( voxelmapSize( v ) );
 }
 
+VOXOWL_HOST
 void 
 voxelmapCreate( voxelmap_t *v, voxel_format_t f, uint32_t size_x, uint32_t size_y, uint32_t size_z ) {
     voxelmapCreate( v, f, glm::ivec3( size_x, size_y, size_z ) );

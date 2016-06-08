@@ -258,7 +258,7 @@ RaycasterCUDA::beginRender() {
         d_framebuffer.width = width;
         d_framebuffer.height = height;
         d_framebuffer.format =(voxowl_pixel_format_t)getFramebuffer()->getPixelFormat();
-        cudaChannelFormatDesc fb_channelDesc = cudaCreateChannelDesc(8,8,8,0,cudaChannelFormatKindUnsigned);
+        cudaChannelFormatDesc fb_channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindUnsigned);
         RETURN_IF_ERR( cudaMallocArray( &(d_framebuffer.data), &fb_channelDesc, width, height, cudaArraySurfaceLoadStore ) );
         RETURN_IF_ERR( cudaBindSurfaceToArray( fb_surface, d_framebuffer.data ) );
     }

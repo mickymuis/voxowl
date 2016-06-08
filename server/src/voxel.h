@@ -1,4 +1,5 @@
 #pragma once
+#define GLM_FORCE_CXX98
 
 /* This file describes the elemtary data type of the voxel and voxelmap
    A voxelmap is (in this context) defined as a contiguous three-dimensional array of voxels */
@@ -20,8 +21,8 @@ typedef struct {
 } voxelmap_t;
 
 /* Initialize volume and allocate its buffer */
-void voxelmapCreate( voxelmap_t *, voxel_format_t, glm::ivec3 size );
-void voxelmapCreate( voxelmap_t *, voxel_format_t, uint32_t size_x, uint32_t size_y, uint32_t size_z );
+VOXOWL_HOST void voxelmapCreate( voxelmap_t *, voxel_format_t, glm::ivec3 size );
+VOXOWL_HOST void voxelmapCreate( voxelmap_t *, voxel_format_t, uint32_t size_x, uint32_t size_y, uint32_t size_z );
 
 /* Free a volume's buffer */
 void voxelmapFree( voxelmap_t * );

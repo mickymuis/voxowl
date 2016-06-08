@@ -9,6 +9,13 @@ set(
     )
 
 set( CUDA_SEPARABLE_COMPILATION ON )
+set( CUDA_PROPAGATE_HOST_FLAGS OFF )
+## Compiler flags
+LIST(APPEND CMAKE_CXX_FLAGS "-std=c++0x -g")
+#LIST(APPEND CMAKE_CXX_FLAGS "-std=c++0x -g -O3 -ffast-math -Wall")
+#LIST(APPEND CUDA_NVCC_FLAGS -lineinfo -use_fast_math -Xptxas -dlcm=cg)
+
+SET( CUDA_HOST_COMPILER "g++44" )
 
 # Specify include directories
 include_directories(
@@ -39,9 +46,6 @@ cuda_add_executable(
     src/raycast_cuda.cu
     )
 
-## Compiler flags
-LIST(APPEND CMAKE_CXX_FLAGS "-std=c++0x -g -O3 -ffast-math -Wall")
-LIST(APPEND CUDA_NVCC_FLAGS --compiler-options -rdc=true -fno-strict-aliasing -lineinfo -use_fast_math -Xptxas -dlcm=cg)
 
 # For linking ...
 # Specify target & libraries to link it with
