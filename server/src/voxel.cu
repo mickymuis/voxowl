@@ -49,7 +49,9 @@ voxelmapSize( voxelmap_t *v ) {
 VOXOWL_HOST_AND_DEVICE
 void* 
 voxel( voxelmap_t* v, uint32_t x, uint32_t y, uint32_t z ) {
-    return (void*)((char*)v->data + v->size.z * v->size.y * x + v->size.z * y + z );
+    size_t bytes_per_voxel =voxelSize( v->format );
+    size_t offset =v->size.z * v->size.y * x + v->size.z * y + z; 
+    return (void*)((char*)v->data + offset * bytes_per_voxel );
 }
 
 VOXOWL_HOST_AND_DEVICE

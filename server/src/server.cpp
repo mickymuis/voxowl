@@ -55,27 +55,28 @@ connectionMain( Connection* c, Server* server ) {
 
     do {
 
-        if( c->socket->poll( 0, 1000 ) ) {
+        if( c->socket->getBuffer()->in_avail() || c->socket->poll( 0, 1000 ) ) {
             if( stream.eof() || stream.bad() ) {
                 c->socket->setState( Socket::CLOSED );
                 break;
             }
             std::string buffer;
             std::getline( stream, buffer );
-            if( buffer.size() <= 1 )
-                continue;
-            buffer.resize( buffer.size() -1);
-            Packet packet;
+            if( buffer.size() > 1 ) {
+                //buffer.resize( buffer.size() );
+                buffer.erase(buffer.find_last_not_of(" \n\r\t")+1);
+                Packet packet;
 
-            packet.connection = c;
-            packet.direction =Packet::RECEIVE;
-            packet.mode =Packet::CHAR;
-            packet.size =buffer.size();
-            packet.own_payload =true;
-            packet.payload =malloc( buffer.size() * sizeof(char) );
-            memcpy( packet.payload, buffer.c_str(), buffer.size() * sizeof(char) );
+                packet.connection = c;
+                packet.direction =Packet::RECEIVE;
+                packet.mode =Packet::CHAR;
+                packet.size =buffer.size();
+                packet.own_payload =true;
+                packet.payload =malloc( buffer.size() * sizeof(char) );
+                memcpy( packet.payload, buffer.c_str(), buffer.size() * sizeof(char) );
 
-            server->pbuffer_control->enqueue( packet );
+                server->pbuffer_control->enqueue( packet );
+            }
         }
 
         c->pbuffer->dispatchOutgoing();

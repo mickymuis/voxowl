@@ -55,6 +55,8 @@ raycastSetMatrices( raycastInfo_t* raycast_info, glm::mat4 mat_model, glm::mat4 
     // We assume a symmetric projection matrix
     const float near = ( 2.0f * mat_proj[3][2] ) / ( 2.0f * mat_proj[2][2] - 2.0f );
     const float far = ( (mat_proj[2][2] - 1.0f) * near ) / ( mat_proj[2][2] + 1.0 );
+//    const float near =1.f;
+//    const float far =100.f;
     const float right =near / mat_proj[0][0];
     const float top =near / mat_proj[1][1];
     const float left =-right, bottom =-top;

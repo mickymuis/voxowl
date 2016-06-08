@@ -14,6 +14,8 @@
 #include <glm/gtx/transform.hpp>
 //#include <glm/gtc/noise.hpp>
 #include <vector_types.h>
+#include "bmp.h"
+#include <fstream>
 
 // Define global volume and framebuffer handles, for now at least
 texture<uint32_t,3> volume_texture;
@@ -176,7 +178,10 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
 
 
    // uint32_t color =tex3D( volume_texture, 0, x, y );
-    surf2Dwrite( rgba, fb_surface, x*4, y, cudaBoundaryModeTrap );
+//    surf2Dwrite( rgba, fb_surface, x*4, y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 24) & 0xFF), fb_surface, x*3, y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 16) & 0xFF), fb_surface, x*3+1, y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 8) & 0xFF), fb_surface, x*3+2, y, cudaBoundaryModeTrap );
 }
 
 /*bool
@@ -258,8 +263,8 @@ RaycasterCUDA::beginRender() {
         d_framebuffer.width = width;
         d_framebuffer.height = height;
         d_framebuffer.format =(voxowl_pixel_format_t)getFramebuffer()->getPixelFormat();
-        cudaChannelFormatDesc fb_channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindUnsigned);
-        RETURN_IF_ERR( cudaMallocArray( &(d_framebuffer.data), &fb_channelDesc, width, height, cudaArraySurfaceLoadStore ) );
+        cudaChannelFormatDesc fb_channelDesc = cudaCreateChannelDesc(8,0,0,0,cudaChannelFormatKindUnsigned);
+        RETURN_IF_ERR( cudaMallocArray( &(d_framebuffer.data), &fb_channelDesc, width * 3, height, cudaArraySurfaceLoadStore ) );
         RETURN_IF_ERR( cudaBindSurfaceToArray( fb_surface, d_framebuffer.data ) );
     }
 
@@ -267,6 +272,7 @@ RaycasterCUDA::beginRender() {
     // Setup the raycast parameters based on the matrices from the camera and the 'model'
     // TODO: some kind of caching?
     raycastInfo_t raycast_info;
+    getCamera()->setAspect( (float)width/(float)height );
     raycastSetMatrices( &raycast_info, getVolume()->modelMatrix(), getCamera()->getViewMatrix(), getCamera()->getProjMatrix(), width, height );
 
     // Divide the invidual fragments over N / blocksize blocks
@@ -292,6 +298,21 @@ RaycasterCUDA::synchronize() {
     int width =getFramebuffer()->getWidth();
     int height =getFramebuffer()->getHeight();
 
+
     RETURN_IF_ERR ( cudaMemcpyFromArray( data_ptr, d_framebuffer.data, 0, 0, width*height*bpp, cudaMemcpyDeviceToHost ) );
+    
+//    uint32_t* FB = (uint32_t*)malloc( sizeof(uint32_t) * width * height );
+//    RETURN_IF_ERR ( cudaMemcpyFromArray( FB, d_framebuffer.data, 0, 0, width*height*4, cudaMemcpyDeviceToHost ) );
+
+    // Write the buffer as a BMP, for testing
+    std::vector<uint8_t> output;
+    size_t output_size =bitmap_encode_multichannel_8bit( (const uint8_t*)data_ptr, width, height, 3, output );
+    //size_t output_size =bitmap_encode_rgba( (const uint32_t*)FB, width, height, output );
+
+    std::ofstream file_output;
+    file_output.open("../buffer.bmp");
+    file_output.write((const char*)&output[0], output_size);
+    file_output.close();
+
     return true;
 }
