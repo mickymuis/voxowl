@@ -112,7 +112,7 @@ main( int argc, char** argv ) {
     PacketBuffer pbuffer;
 
     Framebuffer fb( "framebuffer", &root );
-    fb.setSize( 800, 600 );
+    fb.setSize( 1024, 768 );
     fb.setTarget( Framebuffer::TARGET_REMOTE );
     fb.setMode( Framebuffer::MODE_PIXMAP );
     fb.setPixelFormat( Framebuffer::PF_RGB888 );
@@ -121,7 +121,7 @@ main( int argc, char** argv ) {
     Camera camera( "camera", &root );
     
     MengerSponge sponge( "mengersponge", &root );
-    sponge.setDepth( 3 );
+    sponge.setDepth( 4 );
 
     RaycasterCUDA renderer( "renderer", &root );
     renderer.setFramebuffer( &fb );

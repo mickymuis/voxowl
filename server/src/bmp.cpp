@@ -49,33 +49,9 @@ namespace
 size_t 
 bitmap_encode_rgba(const uint32_t* rgba, int width, int height, std::vector<uint8_t>& data)
 {
-    data.clear();
-    data.push_back(0x42); //B
-    data.push_back(0x4D); //M
-    size_t file_size_offset = data.size();
-    insert_4_bytes(data, 0xFFFFFFFF); //File Size, fill later
-    data.push_back(0x00);
-    data.push_back(0x00);
-    data.push_back(0x00);
-    data.push_back(0x00);
-    size_t pixel_info_offset_offset = data.size();
-    insert_4_bytes(data, 0); //pixel info offset, fill later
-    insert_4_bytes(data, 40); //Size of BITMAPINFOHEADER
-    insert_4_bytes(data, width);
-    insert_4_bytes(data, height);
-    insert_2_bytes(data, 1); //Number of color planes
-    insert_2_bytes(data, 24); //Bits per pixel
-    insert_4_bytes(data, 0); //No compression
-    size_t raw_pixel_array_size_offset = data.size();
-    insert_4_bytes(data, 0); //size of raw data in pixel array, fill later
-    insert_4_bytes(data, 2835); //Horizontal Resolution
-    insert_4_bytes(data, 2835); //Vertical Resolution
-    insert_4_bytes(data, 0); //Number of colors
-    insert_4_bytes(data, 0); //Important colors
-    {
-        uint32_t data_size = data.size();
-        memcpy(&data[pixel_info_offset_offset], &data_size, 4);
-    }
+    size_t raw_pixel_array_size_offset =bitmap_make_header( width, height, 24, data );
+    size_t file_size_offset =2;
+
     uint32_t size_of_header = data.size();
     for (uint_fast32_t y = 0; y < height; ++y)
     {
@@ -107,3 +83,71 @@ bitmap_encode_rgba(const uint32_t* rgba, int width, int height, std::vector<uint
 }
 
 
+size_t
+bitmap_encode_multichannel_8bit(const uint8_t* elems, int width, int height, int num_channels, std::vector<uint8_t>& data) {
+
+    size_t raw_pixel_array_size_offset =bitmap_make_header( width, height, num_channels*8, data );
+    size_t file_size_offset =2;
+
+    uint32_t size_of_header = data.size();
+    for (uint_fast32_t y = 0; y < height; ++y)
+    {
+        for (uint_fast32_t x = 0; x < width; ++x)
+        {
+            //Write bottom pixels first since image is flipped
+            //Also write pixels in BGR
+            // Cycles through the channels adding them in reverse order
+            for( int_fast32_t c =num_channels-1; c >= 0; c-- ) {
+
+                uint8_t elem = elems[(height-1-y)*(width)*num_channels + x*num_channels + c];
+                data.push_back( elem );
+            }
+        }
+        while ((data.size() - size_of_header)%4)
+        {
+            data.push_back(0);
+        }
+    }
+    {
+        uint32_t file_size = data.size();
+        memcpy(&data[file_size_offset], &file_size, 4);
+    }
+    {
+        uint32_t pixel_data_size = data.size() - size_of_header;
+        memcpy(&data[raw_pixel_array_size_offset], &pixel_data_size, 4);
+    }
+    return data.size();
+}
+
+size_t
+bitmap_make_header( int width, int height, int bpp, std::vector<uint8_t>& data ) {
+
+    data.clear();
+    data.push_back(0x42); //B
+    data.push_back(0x4D); //M
+    size_t file_size_offset = data.size();
+    insert_4_bytes(data, 0xFFFFFFFF); //File Size, fill later
+    data.push_back(0x00);
+    data.push_back(0x00);
+    data.push_back(0x00);
+    data.push_back(0x00);
+    size_t pixel_info_offset_offset = data.size();
+    insert_4_bytes(data, 0); //pixel info offset, fill later
+    insert_4_bytes(data, 40); //Size of BITMAPINFOHEADER
+    insert_4_bytes(data, width);
+    insert_4_bytes(data, height);
+    insert_2_bytes(data, 1); //Number of color planes
+    insert_2_bytes(data, bpp); //Bits per pixel
+    insert_4_bytes(data, 0); //No compression
+    size_t raw_pixel_array_size_offset = data.size();
+    insert_4_bytes(data, 0); //size of raw data in pixel array, fill later
+    insert_4_bytes(data, 2835); //Horizontal Resolution
+    insert_4_bytes(data, 2835); //Vertical Resolution
+    insert_4_bytes(data, 0); //Number of colors
+    insert_4_bytes(data, 0); //Important colors
+    {
+        uint32_t data_size = data.size();
+        memcpy(&data[pixel_info_offset_offset], &data_size, 4);
+    }
+    return raw_pixel_array_size_offset;
+}
