@@ -5,8 +5,11 @@ find_package(CUDA REQUIRED)
 set(
     CUDA_NVCC_FLAGS
     ${CUDA_NVCC_FLAGS};
-    -x cu -O3 -gencode arch=compute_20,code=sm_20
+    -rdc=true -O3 -gencode arch=compute_20,code=sm_20
     )
+
+set( CUDA_SEPARABLE_COMPILATION ON )
+
 # Specify include directories
 include_directories(
     src
@@ -27,16 +30,18 @@ cuda_add_executable(
     src/framebuffer.cpp
     src/renderer.cpp
     src/volume.cpp
+    src/camera.cpp
+    src/actor.cpp
+    src/voxel.cu
     src/mengersponge.cpp
     src/bmp.cpp
-    src/raycast.c
+    src/raycast.cu
     src/raycast_cuda.cu
     )
 
 ## Compiler flags
 LIST(APPEND CMAKE_CXX_FLAGS "-std=c++0x -g -O3 -ffast-math -Wall")
-LIST(APPEND CUDA_NVCC_FLAGS --compiler-options -fno-strict-aliasing -lineinfo -use_fast_math -Xptxas -dlcm=cg)
-LIST(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_20,code=sm_20)
+LIST(APPEND CUDA_NVCC_FLAGS --compiler-options -rdc=true -fno-strict-aliasing -lineinfo -use_fast_math -Xptxas -dlcm=cg)
 
 # For linking ...
 # Specify target & libraries to link it with

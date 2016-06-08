@@ -1,0 +1,111 @@
+#include "renderer.h"
+#include "framebuffer.h"
+#include "volume.h"
+#include "camera.h"
+#include <typeinfo>
+
+Renderer::Renderer( const char *name, Object *parent )
+    : Object( name, parent ) {
+    fb =NULL;
+    vol =NULL;
+    camera =NULL;
+    addProperty( "camera" );
+    addProperty( "framebuffer" );
+    addProperty( "volume" );
+    addMethod( "render" );
+}
+
+Renderer::~Renderer() {
+
+}
+
+void Renderer::setCamera( Camera* c ) { camera =c; }
+Camera *Renderer::getCamera() const { return camera; }
+
+void Renderer::setFramebuffer( Framebuffer* f ) { fb =f; }
+Framebuffer* Renderer::getFramebuffer() const { return fb; }
+
+void Renderer::setVolume( Volume* v ) { vol =v; }
+Volume* Renderer::getVolume() const { return vol; }
+
+bool 
+Renderer::render() {
+    if( !beginRender() ) return false;
+    return synchronize();
+}
+
+Variant 
+Renderer::callMeta( const std::string& method, const Variant::list& args ) {
+    if( method == "render" ) {
+        if( !render() ) 
+            return errorString();
+        return Variant();
+    }
+
+    return Object::callMeta( method, args );
+}
+
+bool 
+Renderer::setMeta( const std::string& property, const Variant& value ) {
+    if( property == "framebuffer" ) {
+        Object *obj =value.toObject();
+        try {
+            if( typeid(*obj) == typeid(Framebuffer) ) {
+                //std::lock_guard<std::mutex> lock ( write_lock );
+                setFramebuffer( dynamic_cast<Framebuffer*>(obj) );
+                return true;
+            }
+            else
+                setFramebuffer( 0 );
+        } catch( std::bad_typeid& e ) { setFramebuffer( 0 ); }
+        return false;
+    } else if( property == "camera" ) {
+        Object *obj =value.toObject();
+        try {
+            if( typeid(*obj) == typeid(Camera) ) {
+                //std::lock_guard<std::mutex> lock ( write_lock );
+                setCamera( dynamic_cast<Camera*>(obj) );
+                return true;
+            }
+            else
+                setCamera( 0 );
+        } catch( std::bad_typeid& e ) { setCamera( 0 ); }
+        return false;
+    } else if( property == "volume" ) {
+        Volume *vol;
+        try {
+            vol = dynamic_cast<Volume*>( value.toObject() );
+
+            if( vol ) {
+                //std::lock_guard<std::mutex> lock ( write_lock );
+                setVolume( vol );
+                return true;
+            }
+            else
+                setVolume( 0 );
+        } catch( std::bad_typeid& e ) { setVolume( 0 ); }
+        return false;
+    }
+
+    return Object::setMeta( property, value );
+}
+
+Variant 
+Renderer::getMeta( const std::string& property ) const {
+    if( property == "framebuffer" )
+        return getFramebuffer();
+    else if( property == "camera" )
+        return getCamera();
+    else if( property == "volume" )
+        return getVolume();
+    return Object::getMeta( property );
+}
+
+bool 
+Renderer::setError( bool err, const std::string& str ) {
+    if( err )
+        err_str =str;
+    else
+        err_str ="";
+    return !err;
+}

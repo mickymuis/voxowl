@@ -12,7 +12,9 @@
 #include "parser.h"
 #include "packetbuffer.h"
 #include "framebuffer.h"
-#include "renderer.h"
+#include "camera.h"
+#include "raycast_cuda.h"
+#include "mengersponge.h"
 
 Parser parser;
 
@@ -113,11 +115,19 @@ main( int argc, char** argv ) {
     fb.setSize( 800, 600 );
     fb.setTarget( Framebuffer::TARGET_REMOTE );
     fb.setMode( Framebuffer::MODE_PIXMAP );
-    fb.setPixelFormat( Framebuffer::PF_RGBA );
+    fb.setPixelFormat( Framebuffer::PF_RGB888 );
     fb.reinitialize();
 
-    //Gpu gpu( "gpu", &root );
+    Camera camera( "camera", &root );
+    
+    MengerSponge sponge( "mengersponge", &root );
+    sponge.setDepth( 3 );
 
+    RaycasterCUDA renderer( "renderer", &root );
+    renderer.setFramebuffer( &fb );
+    renderer.setCamera( &camera );
+    renderer.setVolume( &sponge );
+    
     /* */
     uint32_t portnum =5678;
     if( argc > 1 && atoi( argv[1] ) != 0 )

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <mutex>
-#include <cinttypes>
+//#include <mutex>
+#include <inttypes.h>
 #include <string>
 
 #include "object.h"
@@ -14,7 +14,7 @@ class Framebuffer : public Object {
     public:
         enum PIXEL_FORMAT {
             PF_NONE = VOXOWL_PF_NONE,
-            PF_RGBA = VOXOWL_PF_RGBA
+            PF_RGB888 = VOXOWL_PF_RGB888
         };
         enum MODE {
             MODE_NONE = VOXOWL_FBMODE_NONE,
@@ -43,6 +43,10 @@ class Framebuffer : public Object {
         int getWidth() const { return width; }
         int getHeight() const { return height; }
 
+        void setAASamples( int xsize, int ysize );
+        int getAAXSamples() const { return aa_xsamples; }
+        int getAAYSamples() const { return aa_ysamples; }
+
         uint32_t getFrameSize() const { return frame_size; }
         std::string errorString() const { return err_str; }
 
@@ -64,10 +68,11 @@ class Framebuffer : public Object {
         int pixel_format;
         int mode;
         int target;
+        int aa_xsamples, aa_ysamples;
         std::string err_str;
 
         bool setError( bool, const std::string& );
         uint32_t calculateFrameSize() const;
 
-        std::mutex update_lock;
+        //std::mutex update_lock;
 };

@@ -11,6 +11,7 @@ Framebuffer::Framebuffer( const char* name, Object* parent )
     header_begin =0;
     frame_begin =0;
     frame_size =0;
+    aa_xsamples =aa_ysamples =1;
 
     addMethod( "getFrameSize" );
     addMethod( "reinitialize" );
@@ -30,25 +31,25 @@ Framebuffer::~Framebuffer() {
 
 void 
 Framebuffer::setTarget( int t ){
-    std::lock_guard<std::mutex> lock( update_lock );
+    //std::lock_guard<std::mutex> lock( update_lock );
     target =t;
 }
 
 void 
 Framebuffer::setPixelFormat( int pf ){
-    std::lock_guard<std::mutex> lock( update_lock );
+    //std::lock_guard<std::mutex> lock( update_lock );
     pixel_format =pf;
 }
 
 void 
 Framebuffer::setMode( int m ) {
-    std::lock_guard<std::mutex> lock( update_lock );
+    //std::lock_guard<std::mutex> lock( update_lock );
     mode =m;
 }
 
 void 
 Framebuffer::setSize( int w, int h ) {
-    std::lock_guard<std::mutex> lock( update_lock );
+    //std::lock_guard<std::mutex> lock( update_lock );
     width =w;
     height =h;
 }
@@ -58,7 +59,7 @@ Framebuffer::calculateFrameSize() const {
     uint32_t size;
     uint32_t pixel_size;
     switch( pixel_format ) {
-        case PF_RGBA: pixel_size =4; break;
+        case PF_RGB888: pixel_size =3; break;
         default: pixel_size =0; break;
     }
 
@@ -70,8 +71,15 @@ Framebuffer::calculateFrameSize() const {
 }
 
 void 
+Framebuffer::setAASamples( int xsize, int ysize ) {
+    //std::lock_guard<std::mutex> lock( update_lock );
+    aa_xsamples =xsize;
+    aa_ysamples =ysize;
+}
+
+void 
 Framebuffer::reinitialize() {
-    std::lock_guard<std::mutex> lock( update_lock );
+    //std::lock_guard<std::mutex> lock( update_lock );
 
     if( header_begin )
         free( header_begin );
@@ -85,7 +93,7 @@ Framebuffer::reinitialize() {
 
     /* Initialize the header, we need it for network transmission */
     struct voxowl_frame_header_t* header =(struct voxowl_frame_header_t*)header_begin;
-    header->magic = VOXOWL_PACKET_MAGIC;
+    header->magic = VOXOWL_FRAME_MAGIC;
     header->pixel_format = pixel_format;
     header->fb_mode = mode;
     header->width = width;
@@ -95,13 +103,13 @@ Framebuffer::reinitialize() {
 
 bool 
 Framebuffer::read() {
-    std::lock_guard<std::mutex> lock( update_lock );
+    //std::lock_guard<std::mutex> lock( update_lock );
 
 }
 
 bool 
 Framebuffer::write() {
-    std::lock_guard<std::mutex> lock( update_lock );
+   // std::lock_guard<std::mutex> lock( update_lock );
 
     switch( target ) {
         case TARGET_FILE:
