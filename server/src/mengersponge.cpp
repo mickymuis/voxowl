@@ -67,7 +67,8 @@ MengerSponge::makeSponge() {
 
     glm::ivec3 size( s );
     
-    voxelmapCreate( &volume, VOXEL_RGBA_UINT32, s, s, s );
+    //voxelmapCreate( &volume, VOXEL_RGBA_UINT32, s, s, s );
+    voxelmapCreate( &volume, VOXEL_RGB24_8ALPHA1_UINT32, s, s, s );
 
     for( int x=0; x < size.x; x++ )
         for( int y=0; y < size.y; y++ )
@@ -78,5 +79,9 @@ MengerSponge::makeSponge() {
                     (float)z / (float)(size.z-1),
                     1.f ));
             }
-    menger( &volume, size, size, glm::ivec3(0) );
+
+    //uint32_t white =0xff0000ff;
+//    uint8_t white =0xff;
+//    voxelmapFill( &volume, &white ); 
+   menger( &volume, size, size, glm::ivec3(0) );
 }

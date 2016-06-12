@@ -94,8 +94,38 @@ raycast( volumeDevice_t v, const ray_t& r ) {
             break;
         
        // glm::vec4 vox =unpackRGBA32( *voxel3d( V, size, index ) );
-        glm::vec3 cont_index = glm::vec3(index);//(boxDist) * largest;
-        glm::vec4 vox =unpackRGBA_UINT32( tex3D( volume_texture, cont_index.z, cont_index.y, cont_index.x ) );
+       // glm::vec3 cont_index = glm::vec3(index);//(boxDist) * largest;
+       // glm::vec4 vox =unpackRGBA_UINT32( tex3D( volume_texture, cont_index.z, cont_index.y, cont_index.x ) );
+    
+    // TODO: move to function
+        glm::vec4 vox;
+        glm::ivec3 block =blockPosition( v.format, index );
+        switch( v.format ) {
+            case VOXEL_RGBA_UINT32: {
+                vox =unpackRGBA_UINT32( tex3D( volume_texture, block.x, block.y, block.z ) );
+                break;
+            }
+            case VOXEL_INTENSITY_UINT8: {
+                uint8_t gray =tex3D( volume_texture, block.x, block.y, block.z );
+                vox =glm::vec4( unpackINTENSITY_UINT8( gray ) );
+                vox.a =(float)(vox.r != 0.f);
+                break;
+            }
+            case VOXEL_BITMAP_UINT8: {
+                uint8_t bitmap =tex3D( volume_texture, block.x, block.y, block.z );
+                int bit_offs =index.z % voxelsPerBlock( v.format );
+                //int bit_offs =index.z - block.z*8;
+                vox =glm::vec4( (int)unpackBIT_UINT8( bitmap, bit_offs ) );
+                break;
+            }
+            case VOXEL_RGB24_8ALPHA1_UINT32: {
+                uint32_t rgb24_8alpha1 =tex3D( volume_texture, block.x, block.y, block.z );
+                int bit_offs =index.z % voxelsPerBlock( v.format );
+                vox =unpackRGBA_RGB24_8ALPHA1_UINT32( rgb24_8alpha1, bit_offs );
+
+                break;
+            }
+        }
 
         vox.r *= (3-side)/3.f;
         vox.g *= (3-side)/3.f;
@@ -226,9 +256,34 @@ RaycasterCUDA::beginRender() {
             RETURN_IF_ERR( cudaFreeArray( d_volume.data ) );
 
         d_volume.size =voxelmap.size;
-        const cudaExtent v_extent = make_cudaExtent( d_volume.size.x, d_volume.size.y, d_volume.size.z );
-        // TODO: use format
-        cudaChannelFormatDesc v_channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindUnsigned);
+        d_volume.blocks =voxelmap.blocks;
+        d_volume.format =voxelmap.format;
+
+        cudaExtent v_extent;
+        cudaChannelFormatDesc v_channelDesc;
+
+        printf( "Allocating texture for voxelmap, blocks=(%d,%d,%d), bytes per block=%d\n", voxelmap.blocks.x, voxelmap.blocks.y, voxelmap.blocks.z, bytesPerBlock( voxelmap.format ) );
+
+        switch( voxelmap.format ) {
+            // We differentiate between byte and word block sizes
+            case VOXEL_RGB24_8ALPHA1_UINT32:
+            case VOXEL_RGBA_UINT32:
+                v_extent = make_cudaExtent( d_volume.blocks.x, d_volume.blocks.y, d_volume.blocks.z );
+                v_channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindUnsigned);
+                break;
+
+            case VOXEL_INTENSITY_UINT8:
+            case VOXEL_BITMAP_UINT8:
+                // By convention, we store blocks per-byte in the z-direction
+                v_extent = make_cudaExtent( d_volume.blocks.x, d_volume.blocks.y, d_volume.blocks.z );
+                v_channelDesc = cudaCreateChannelDesc(8,0,0,0,cudaChannelFormatKindUnsigned);
+                break;
+
+            default:
+                return setError( true, "Unhandled voxel format" );
+                
+        }
+
         RETURN_IF_ERR( cudaMalloc3DArray( &d_volume.data, &v_channelDesc, v_extent ) );
         volume_texture.normalized = false;                      
         volume_texture.filterMode = cudaFilterModePoint;      
@@ -240,7 +295,7 @@ RaycasterCUDA::beginRender() {
         // Copy the volume to the device
         // TODO: make separate step
         cudaMemcpy3DParms copyParams = {0};
-        copyParams.srcPtr   = make_cudaPitchedPtr( voxelmap.data, v_extent.width * voxelSize(voxelmap.format), v_extent.width, v_extent.height);
+        copyParams.srcPtr   = make_cudaPitchedPtr( voxelmap.data, v_extent.width * bytesPerBlock(voxelmap.format), v_extent.width, v_extent.height);
         copyParams.dstArray = d_volume.data;
         copyParams.extent   = v_extent;
         copyParams.kind     = cudaMemcpyHostToDevice;

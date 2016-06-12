@@ -6,6 +6,7 @@
 
 typedef struct {
     glm::ivec3 size;
+    glm::ivec3 blocks;
     glm::mat4 matModel;
     cudaArray *data;
     voxel_format_t format;

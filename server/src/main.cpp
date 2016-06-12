@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 #include <thread>
 #include <chrono>
 #include <errno.h>
@@ -15,6 +16,17 @@
 #include "camera.h"
 #include "raycast_cuda.h"
 #include "mengersponge.h"
+
+#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
+#define BYTE_TO_BINARY(byte)  \
+      (byte & 0x80 ? '1' : '0'), \
+  (byte & 0x40 ? '1' : '0'), \
+  (byte & 0x20 ? '1' : '0'), \
+  (byte & 0x10 ? '1' : '0'), \
+  (byte & 0x08 ? '1' : '0'), \
+  (byte & 0x04 ? '1' : '0'), \
+  (byte & 0x02 ? '1' : '0'), \
+  (byte & 0x01 ? '1' : '0') 
 
 Parser parser;
 
@@ -106,6 +118,20 @@ dummy_data_thread( Server *server ) {
 int
 main( int argc, char** argv ) {
 
+    /*uint32_t a;
+    glm::vec4 rgba( .75f, .5f, .25f, 1.f );
+    packRGBA_RGB24_8ALPHA1_UINT32( &a, 0, rgba );
+    printf( "a: 0x%x alpha "BYTE_TO_BINARY_PATTERN"\n", a, BYTE_TO_BINARY( (uint8_t)a ) );
+    rgba =unpackRGBA_RGB24_8ALPHA1_UINT32( a, 0 );
+    printf( "rgba(0): %f %f %f %f\n", rgba.r, rgba.g, rgba.b, rgba.a );
+    packRGBA_RGB24_8ALPHA1_UINT32( &a, 7, rgba );
+    printf( "a: 0x%x alpha "BYTE_TO_BINARY_PATTERN"\n", a, BYTE_TO_BINARY( (uint8_t)a ) );
+    rgba =unpackRGBA_RGB24_8ALPHA1_UINT32( a, 1 );
+    printf( "rgba(1): %f %f %f %f\n", rgba.r, rgba.g, rgba.b, rgba.a );
+    packRGBA_RGB24_8ALPHA1_UINT32( &a, 7, rgba );
+    printf( "a: 0x%x alpha "BYTE_TO_BINARY_PATTERN"\n", a, BYTE_TO_BINARY( (uint8_t)a ) );*/
+
+
     /* Setup the environment */
     Object root("root");
     Server server( "server", &root );
@@ -116,12 +142,13 @@ main( int argc, char** argv ) {
     fb.setTarget( Framebuffer::TARGET_REMOTE );
     fb.setMode( Framebuffer::MODE_PIXMAP );
     fb.setPixelFormat( Framebuffer::PF_RGB888 );
+    fb.setAASamples( 2, 2 );
     fb.reinitialize();
 
     Camera camera( "camera", &root );
     
     MengerSponge sponge( "mengersponge", &root );
-    sponge.setDepth( 4 );
+    sponge.setDepth( 5 );
 
     RaycasterCUDA renderer( "renderer", &root );
     renderer.setFramebuffer( &fb );
