@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <string>
 
+#include "platform.h"
 #include "object.h"
 #include "voxowl.h"
 
@@ -19,6 +20,9 @@ class Framebuffer : public Object {
         enum MODE {
             MODE_NONE = VOXOWL_FBMODE_NONE,
             MODE_PIXMAP = VOXOWL_FBMODE_PIXMAP
+#ifdef VOXOWL_USE_TURBOJPEG
+            ,MODE_JPEG = VOXOWL_FBMODE_JPEG
+#endif
         };
 
         enum TARGET {
@@ -73,6 +77,17 @@ class Framebuffer : public Object {
 
         bool setError( bool, const std::string& );
         uint32_t calculateFrameSize() const;
+
+#ifdef VOXOWL_USE_TURBOJPEG
+        class jpeg_t {
+            public:
+               jpeg_t() : compressedImage(0), size(0) {}
+                unsigned char *compressedImage;
+                long unsigned int size;
+        } jpeg;
+        bool jpegEncode();
+        void jpegCleanup();
+#endif
 
         //std::mutex update_lock;
 };

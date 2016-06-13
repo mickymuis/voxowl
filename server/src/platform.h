@@ -9,3 +9,4 @@
 #define VOXOWL_HOST __host__
 #define VOXOWL_CUDA_KERNEL __global__
 
+#define VOXOWL_USE_TURBOJPEG
