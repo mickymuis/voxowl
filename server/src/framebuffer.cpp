@@ -93,6 +93,9 @@ Framebuffer::reinitialize() {
 
     if( header_begin )
         free( header_begin );
+#ifdef VOXOWL_USE_TURBOJPEG
+    jpegCleanup();
+#endif
 
     frame_size =calculateFrameSize();
 
@@ -138,6 +141,7 @@ Framebuffer::write() {
             packet.direction =Packet::SEND;
             packet.mode =Packet::DATA;
             packet.own_payload =false;
+#ifdef VOXOWL_USE_TURBOJPEG
             if( mode == MODE_JPEG ) {
                 // Need to split into two packets
                 // First, encode the buffer
@@ -160,7 +164,9 @@ Framebuffer::write() {
 
                 c->pbuffer->enqueue( image );
 
-            } else if ( mode == MODE_PIXMAP ) {
+            } else 
+#endif
+            {
                 packet.payload =header_begin;
                 packet.size =frame_size + sizeof( struct voxowl_frame_header_t );
 
@@ -254,12 +260,17 @@ Framebuffer::jpegEncode() {
                                 TJFLAG_FASTDCT);
 
     tjDestroy(jpegCompressor);
+
+    jpeg.size = jpeg.size >= jpegSize ? jpeg.size : jpegSize;
+
 }
 
 void 
 Framebuffer::jpegCleanup() {
-    if( jpeg.compressedImage )
+    if( jpeg.compressedImage ) {
         tjFree( jpeg.compressedImage );
+        jpeg.size =0;
+    }
 }
 
 #endif

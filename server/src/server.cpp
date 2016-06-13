@@ -43,7 +43,7 @@ connectionSendFunc( const Packet& packet ) {
             std::cerr << "Error writing data packet to connection " << packet.connection->getName() << std::endl;
         } else {
 
-            std::cerr << "Writing data packet to connection " << packet.connection->getName() << std::endl;
+            std::cerr << "Writing data packet to connection " << packet.connection->getName() << " size: " << packet.size << " bytes." << std::endl;
         }
     }
 }
