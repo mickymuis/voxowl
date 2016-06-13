@@ -22,14 +22,18 @@ typedef enum {
 } voxowl_pixel_format_t;
 
 /* Framebuffer modi */
-#define VOXOWL_FBMODE_NONE 0x0
-#define VOXOWL_FBMODE_PIXMAP 0x1 // One huge pixmap, not compressed or fragmented
-//#define VOXOWL_FBMODE_
+typedef enum {
+    VOXOWL_FBMODE_NONE =0x0,
+    VOXOWL_FBMODE_PIXMAP =0x1, // One huge pixmap, not compressed or fragmented
+    VOXOWL_FBMODE_JPEG =0x2, // One huge jpeg-compressed image, not fragmented
+} voxowl_fbmode_t;
 
 /* Render targets */
-#define VOXOWL_TARGET_NONE 0x0
-#define VOXOWL_TARGET_FILE 0x1
-#define VOXOWL_TARGET_REMOTE 0x2
+typedef enum {
+    VOXOWL_TARGET_NONE =0x0,
+    VOXOWL_TARGET_FILE =0x1,
+    VOXOWL_TARGET_REMOTE =0x2
+} voxowl_target_t;
 
 /* Renderers */
 #define VOXOWL_RENDERER_NONE 0x0

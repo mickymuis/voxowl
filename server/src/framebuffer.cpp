@@ -3,6 +3,10 @@
 #include "packetbuffer.h"
 #include "voxowl.h"
 
+#ifdef VOXOWL_USE_TURBOJPEG
+#include <turbojpeg.h>
+#endif
+
 Framebuffer::Framebuffer( const char* name, Object* parent )
     : Object( name, parent ) {
     mode = target = pixel_format =0;
@@ -27,6 +31,9 @@ Framebuffer::Framebuffer( const char* name, Object* parent )
 Framebuffer::~Framebuffer() {
     if( header_begin )
         free( header_begin );
+#ifdef VOXOWL_USE_TURBOJPEG
+    jpegCleanup();
+#endif
 }
 
 void 
@@ -64,6 +71,9 @@ Framebuffer::calculateFrameSize() const {
     }
 
     switch( mode ) {
+#ifdef VOXOWL_USE_TURBOJPEG
+        case MODE_JPEG:
+#endif
         case MODE_PIXMAP: size = width*height*pixel_size; break;
         default: size =0; break;
     }
@@ -89,7 +99,7 @@ Framebuffer::reinitialize() {
     /* We allocate a contiguous buffer for the header + frame */
 
     header_begin =malloc( frame_size + sizeof( struct voxowl_frame_header_t ) );
-    frame_begin =header_begin + sizeof( struct voxowl_frame_header_t );
+    frame_begin =(char*)header_begin + sizeof( struct voxowl_frame_header_t );
 
     /* Initialize the header, we need it for network transmission */
     struct voxowl_frame_header_t* header =(struct voxowl_frame_header_t*)header_begin;
@@ -127,11 +137,35 @@ Framebuffer::write() {
             packet.connection =c;
             packet.direction =Packet::SEND;
             packet.mode =Packet::DATA;
-            packet.payload =header_begin;
-            packet.size =frame_size + sizeof( struct voxowl_frame_header_t );
             packet.own_payload =false;
+            if( mode == MODE_JPEG ) {
+                // Need to split into two packets
+                // First, encode the buffer
+                jpegEncode();
 
-            c->pbuffer->enqueue( packet );
+                // Update the frame_size field to the accurate size of the jpeg
+                struct voxowl_frame_header_t* header =(struct voxowl_frame_header_t*)header_begin;
+                header->frame_size = jpeg.size;
+
+                // Send only the header
+                packet.payload =header_begin;
+                packet.size =sizeof( struct voxowl_frame_header_t );
+
+                c->pbuffer->enqueue( packet );
+
+                // Send the image data as a separate packet
+                Packet image =packet;
+                image.payload =jpeg.compressedImage;
+                image.size =jpeg.size;
+
+                c->pbuffer->enqueue( image );
+
+            } else if ( mode == MODE_PIXMAP ) {
+                packet.payload =header_begin;
+                packet.size =frame_size + sizeof( struct voxowl_frame_header_t );
+
+                c->pbuffer->enqueue( packet );
+            }
             break;
         }
 
@@ -203,3 +237,29 @@ Framebuffer::setError( bool err, const std::string& str ) {
         err_str ="";
     return !err;
 }
+
+#ifdef VOXOWL_USE_TURBOJPEG
+/* The following code is based on a snippet posted on Stackoverflow by user 'Theolodis' */
+
+bool
+Framebuffer::jpegEncode() {
+    static const int JPEG_QUALITY = 75;
+    static const int COLOR_COMPONENTS = 3;
+    long unsigned int jpegSize = jpeg.size;
+
+    tjhandle jpegCompressor = tjInitCompress();
+
+    tjCompress2(jpegCompressor, (unsigned char*)data(), width, 0, height, TJPF_RGB,
+                      &jpeg.compressedImage, &jpegSize, TJSAMP_444, JPEG_QUALITY,
+                                TJFLAG_FASTDCT);
+
+    tjDestroy(jpegCompressor);
+}
+
+void 
+Framebuffer::jpegCleanup() {
+    if( jpeg.compressedImage )
+        tjFree( jpeg.compressedImage );
+}
+
+#endif

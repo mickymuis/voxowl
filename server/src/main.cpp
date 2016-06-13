@@ -140,7 +140,7 @@ main( int argc, char** argv ) {
     Framebuffer fb( "framebuffer", &root );
     fb.setSize( 1024, 768 );
     fb.setTarget( Framebuffer::TARGET_REMOTE );
-    fb.setMode( Framebuffer::MODE_PIXMAP );
+    fb.setMode( Framebuffer::MODE_JPEG );
     fb.setPixelFormat( Framebuffer::PF_RGB888 );
     fb.setAASamples( 2, 2 );
     fb.reinitialize();
