@@ -9,14 +9,19 @@
 
 #define DEFAULT_WIDTH 800
 #define DEFAULT_HEIGHT 600
+#define USE_TURBOJPEG
+
+#ifdef USE_TURBOJPEG
+#include <turbojpeg.h>
+#endif
 
 SDL_Texture* _texture;
 
 typedef struct frame_info_ {
-    int width;
-    int height;
+    struct voxowl_frame_header_t header;
     uint32_t size;
-    char *data;
+    unsigned char *data;
+    unsigned char *image;
     bool new;
 
 } frame_info_t;
@@ -26,21 +31,53 @@ frame_init( frame_info_t* frame ) {
     frame->size =0;;
     frame->new =false;
     frame->data =0;
+    frame->image =0;
 }
 
 void 
 updateTexture( SDL_Renderer* render, frame_info_t *frame ) {
     int width =0, height =0;
+    int color_components;
+    if( frame->header.pixel_format == VOXOWL_PF_RGB888 )
+        color_components =3;
+    else
+        return;
+
     if( _texture ) 
         SDL_QueryTexture( _texture, NULL, NULL, &width, &height);
 
-    if( width != frame->width || height != frame->height ) {
+    if( width != frame->header.width || height != frame->header.height ) {
         if( _texture )
             SDL_DestroyTexture( _texture );
-        _texture = SDL_CreateTexture(render, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, frame->width, frame->height);
+        _texture = SDL_CreateTexture(render, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, frame->header.width, frame->header.height);
     }
 
-    SDL_UpdateTexture( _texture, NULL, frame->data, frame->width*3 );        
+#ifdef USE_TURBOJPEG
+    static unsigned char* image =0;
+    if( frame->header.fb_mode == VOXOWL_FBMODE_JPEG ) {
+
+        int jpegSubsamp, width, height;
+
+        printf ( "decoding jpeg size = %d bytes\n", frame->size );
+
+        tjhandle jpegDecompressor = tjInitDecompress();
+
+        tjDecompressHeader2(jpegDecompressor, frame->data, frame->size, &width, &height, &jpegSubsamp);
+        
+        printf( "decoding  width = %d, height = %d\n", width, height );
+        unsigned char image[width*height*color_components];
+        
+        tjDecompress2(jpegDecompressor, frame->data, frame->size, image, width, 0/*pitch*/, height, TJPF_RGB, TJFLAG_FASTDCT);
+        tjDestroy(jpegDecompressor);
+
+
+        SDL_UpdateTexture( _texture, NULL, image, width*color_components );        
+    } else
+#endif
+    {
+        frame->image =frame->data;
+        SDL_UpdateTexture( _texture, NULL, frame->image, frame->header.width*color_components );        
+    }
     frame->new =false;    
 }
 
@@ -81,8 +118,7 @@ fetchIncoming( struct voxowl_socket_t *sock, frame_info_t *frame ) {
 
         fprintf( stderr, "Receiving frame (%u bytes) %dx%d\n", header.frame_size, header.width, header.height );
         
-        frame->width =header.width;
-        frame->height =header.height;
+        frame->header =header;
         
         if( frame->size != header.frame_size ) {
             if( frame->data )
@@ -147,7 +183,10 @@ main ( int argc, char **argv ) {
     
     while(!quit) {
             if( voxowl_poll_incoming( &sock ) != 0 ) {
-                fetchIncoming( &sock, &frame );
+                if( fetchIncoming( &sock, &frame ) == -1 ) {
+                    fprintf( stderr, "Incomming package returned error.\n" );
+                    frame.new =false;
+                }
             }
             if( frame.new ) {
                 updateTexture( render, &frame );

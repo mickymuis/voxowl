@@ -20,7 +20,7 @@ if(TJPEG_FOUND)
     set(TJPEG_LIBRARIES ${TJPEG_LIBRARY})
 endif()
 
-set (CMAKE_CXX_FLAGS "-std=c++0x")
+set (CMAKE_CXX_FLAGS "-std=c++0x -g")
 include_directories(${OPENGL_INCLUDE_DIR})
 include_directories(${SDL2_INCLUDE_DIR})
 include_directories(${GLEW_INCLUDE_DIR})
