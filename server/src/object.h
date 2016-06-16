@@ -7,6 +7,9 @@
 #include <algorithm>
 #include <stdint.h>
 #include "types.h"
+#include "glm/vec2.hpp"
+#include "glm/vec3.hpp"
+#include "glm/vec4.hpp"
 
 class Object;
 
@@ -40,6 +43,11 @@ class Variant {
         bool toBool() const;
         int toInt() const;
         Object* toObject() const;
+
+        static glm::vec2 toVec2( const list& );
+        static glm::vec3 toVec3( const list& );
+        static glm::vec4 toVec4( const list& );
+
 
     private:
         TYPE _type;

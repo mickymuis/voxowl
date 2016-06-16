@@ -88,6 +88,31 @@ Variant::toObject() const {
     }
     return 0;
 }
+glm::vec2 
+Variant::toVec2( const Variant::list& vl ) {
+    glm::vec2 v(0);
+    if( vl.size() > 0 )
+        v.x = (float)vl[0].toReal();
+    if( vl.size() > 1 )
+        v.y = (float)vl[1].toReal();
+    return v;
+}
+
+glm::vec3 
+Variant::toVec3( const Variant::list& vl ) {
+    glm::vec3 v( toVec2( vl ), 0 );
+    if( vl.size() > 2 )
+        v.z =(float)vl[2].toReal();
+    return v;
+}
+
+glm::vec4 
+Variant::toVec4( const Variant::list& vl ) {
+    glm::vec4 v( toVec3( vl ), 0 );
+    if( vl.size() > 3 )
+        v.w =(float)vl[3].toReal();
+    return v;
+}
 
 std::ostream & operator<<(std::ostream &os, const Variant& v)
 {
