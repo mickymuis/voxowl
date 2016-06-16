@@ -80,5 +80,6 @@ raycastSetMatrices( raycastInfo_t* raycast_info, glm::mat4 mat_model, glm::mat4 
     glm::mat4 mat_inv_modelview =glm::inverse( mat_modelview );
     
     raycast_info->origin = glm::vec3( mat_inv_modelview * glm::vec4(0,0,0,1) );
+    raycast_info->matModelView =mat_modelview;
     raycast_info->matInvModelView = mat_inv_modelview;
 }

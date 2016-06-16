@@ -14,10 +14,26 @@ typedef struct {
 
 typedef struct {
     int width, height;
-    cudaArray *data;
+    cudaArray *color_data;
+    cudaArray *normal_depth_data;
     int aaXSamples, aaYSamples;
     voxowl_pixel_format_t format;
 } framebufferDevice_t;
+
+typedef struct {
+    glm::vec4 color; //rgba
+    glm::vec3 position;
+    glm::vec3 position_vs; // position in continuous voxel space
+    glm::vec3 normal;
+} fragment_t;
+
+typedef struct {
+    int kernelSize;
+    int noiseSize;
+    cudaArray *sampleKernel;
+    cudaArray *noise;
+    float radius;
+} ssaoInfo_t;
 
 class RaycasterCUDA : public Renderer {
     public:
@@ -32,5 +48,8 @@ class RaycasterCUDA : public Renderer {
 
         volumeDevice_t d_volume;
         framebufferDevice_t d_framebuffer;
+
+        VOXOWL_HOST bool initSSAO();
+        ssaoInfo_t ssao_info;
 
 };

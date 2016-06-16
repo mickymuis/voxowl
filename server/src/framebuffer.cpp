@@ -2,6 +2,8 @@
 #include "server.h"
 #include "packetbuffer.h"
 #include "voxowl.h"
+#include "bmp.h"
+#include <fstream>
 
 #ifdef VOXOWL_USE_TURBOJPEG
 #include <turbojpeg.h>
@@ -125,9 +127,18 @@ Framebuffer::write() {
    // std::lock_guard<std::mutex> lock( update_lock );
 
     switch( target ) {
-        case TARGET_FILE:
-            return setError( true, "Not implemented" );
+        case TARGET_FILE: {
+                // Write the buffer as a BMP, for testing
+                std::vector<uint8_t> output;
+                size_t output_size =bitmap_encode_multichannel_8bit( (const uint8_t*)data(), width, height, 3, output );
+
+                std::ofstream file_output;
+                // FIXME: variable filename
+                file_output.open("../buffer.bmp");
+                file_output.write((const char*)&output[0], output_size);
+                file_output.close();
             break;
+        }
         case TARGET_REMOTE: {
             Server *server = Server::active();
             if( !server )

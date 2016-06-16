@@ -2,6 +2,7 @@
 #include <cuda.h>
 #define GLM_FORCE_CUDA
 #define GLM_FORCE_CXX98
+#define GLM_SWIZZLE
 #include <glm/glm.hpp>
 
 #define VOXOWL_HOST_AND_DEVICE __host__ __device__

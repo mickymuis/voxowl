@@ -17,6 +17,7 @@ typedef struct {
 } box_t;
 
 typedef struct {
+    glm::mat4 matModelView;
     glm::mat4 matInvModelView;
     glm::vec3 upperLeftNormal;
     glm::vec3 upperRightNormal;
