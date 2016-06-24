@@ -18,23 +18,41 @@ typedef enum {
     VOXEL_BITMAP_UINT8,
     /* Stores 8 voxels with a shared RGB value in the 24 most significant bits 
        and 1 bit alpha for each voxel in the lower bits. 4 bytes blocksize */
-    VOXEL_RGB24_8ALPHA1_UINT32
+    VOXEL_RGB24_8ALPHA1_UINT32,
+    /* Stores RGB values in the 24 most significant bits and a one bit alpha at bit 7. The lower 7 bits are untouched. */
+    VOXEL_RGB24A1_UINT32
 }
  voxel_format_t;
 
 typedef struct {
-    glm::ivec3 size;
-    glm::ivec3 blocks;
+    uint16_t x;
+    uint16_t y;
+    uint16_t z;
+} ivec3_16_t;
+
+VOXOWL_HOST_AND_DEVICE inline ivec3_16_t ivec3_16( uint16_t x, uint16_t y, uint16_t z ) { ivec3_16_t v = { x, y, z }; return v; }
+VOXOWL_HOST_AND_DEVICE inline ivec3_16_t ivec3_16( uint16_t n ) { ivec3_16_t v = { n, n, n }; return v; }
+VOXOWL_HOST_AND_DEVICE inline ivec3_16_t ivec3_16( glm::ivec3 gv ) { ivec3_16_t v = { (uint16_t)gv.x, (uint16_t)gv.y, (uint16_t)gv.z }; return v; }
+VOXOWL_HOST_AND_DEVICE inline glm::ivec3 glm_ivec3_16( ivec3_16_t v ) { return glm::ivec3( v.x, v.y, v.z ); }
+
+typedef struct {
+    ivec3_16_t size;
+    ivec3_16_t blocks;
     voxel_format_t format;
     void *data;
 } voxelmap_t;
 
 /* Initialize volume and allocate its buffer */
-VOXOWL_HOST void voxelmapCreate( voxelmap_t *, voxel_format_t, glm::ivec3 size );
+VOXOWL_HOST void voxelmapCreate( voxelmap_t *, voxel_format_t, ivec3_16_t size );
 VOXOWL_HOST void voxelmapCreate( voxelmap_t *, voxel_format_t, uint32_t size_x, uint32_t size_y, uint32_t size_z );
 
 /* Free a volume's buffer */
 void voxelmapFree( voxelmap_t * );
+
+/* Copies src to dst and checks bounds. Only voxelmaps of equal size are copied.
+   If the maps have the same format, the copy is a simple call to memcpy(), otherwise
+   the data is converted to the destination type first */
+VOXOWL_HOST bool voxelmapSafeCopy( voxelmap_t* dst, voxelmap_t* src );
 
 /* Return the size of one voxel in BITS */
 VOXOWL_HOST_AND_DEVICE size_t bitsPerVoxel( voxel_format_t f );
@@ -46,16 +64,16 @@ VOXOWL_HOST_AND_DEVICE size_t bytesPerBlock( voxel_format_t f );
 VOXOWL_HOST_AND_DEVICE size_t voxelsPerBlock( voxel_format_t f );
 
 /* Returns the number of blocks that are required to store a volume of size, given format f */
-VOXOWL_HOST_AND_DEVICE glm::ivec3 blockCount( voxel_format_t f, glm::ivec3 size );
+VOXOWL_HOST_AND_DEVICE ivec3_16_t blockCount( voxel_format_t f, ivec3_16_t size );
 
 /* Returns the indices of the block that contains the voxel in position, given format f */
-VOXOWL_HOST_AND_DEVICE glm::ivec3 blockPosition( voxel_format_t f, glm::ivec3 position );
+VOXOWL_HOST_AND_DEVICE ivec3_16_t blockPosition( voxel_format_t f, ivec3_16_t position );
 
 /* Return the size of a volume's data in bytes */
 VOXOWL_HOST_AND_DEVICE size_t voxelmapSize( voxelmap_t * );
 
 /* Access an array based volume by coordinates. Returns a pointer to the block containing the element */
-VOXOWL_HOST_AND_DEVICE void* voxel( voxelmap_t*, glm::ivec3 position );
+VOXOWL_HOST_AND_DEVICE void* voxel( voxelmap_t*, ivec3_16_t position );
 VOXOWL_HOST_AND_DEVICE void* voxel( voxelmap_t*, uint32_t x, uint32_t y, uint32_t z );
 
 /* Fills a given volume by copying a value to every position. 
@@ -67,10 +85,10 @@ VOXOWL_HOST_AND_DEVICE void voxelmapFill( voxelmap_t*, void *value );
 */
 
 /* Pack an rgba-4float value into an arbitrarily formatted  voxelmap */
-VOXOWL_HOST_AND_DEVICE void voxelmapPack( voxelmap_t*, glm::ivec3 position, glm::vec4 rgba );
+VOXOWL_HOST_AND_DEVICE void voxelmapPack( voxelmap_t*, ivec3_16_t position, glm::vec4 rgba );
 
 /* Unpack an rgba-4float value from an arbitrarily formatted  voxelmap */
-VOXOWL_HOST_AND_DEVICE glm::vec4 voxelmapUnpack( voxelmap_t*, glm::ivec3 position );
+VOXOWL_HOST_AND_DEVICE glm::vec4 voxelmapUnpack( voxelmap_t*, ivec3_16_t position );
 
 /* Pack an rgba-4float value to an uint32 */
 VOXOWL_HOST_AND_DEVICE void packRGBA_UINT32( uint32_t* rgba, const glm::vec4& v );
@@ -113,6 +131,14 @@ VOXOWL_HOST_AND_DEVICE void packRGB24_8ALPHA1_UINT32( uint32_t *dst, glm::vec3 r
 
 /* Unpack one RGB-3float and a alpha bitmap [0,7] from one uint32 using rgb24_8alpha1 encoding */
 VOXOWL_HOST_AND_DEVICE glm::vec3 unpackRGB24_8ALPHA1_UINT32( bool alpha[8], uint32_t rgb24_8alpha1 );
+
+/* Pack a RGBA-4float into a rgb24a1. The RGB components are packed in 8 bpc in the MSB's
+   A threshold is applied to the alpha value ( >= 0.5 ) and is packed into the 7th bit. 
+   Bits 0-6 (from LSB) are untouched */
+VOXOWL_HOST_AND_DEVICE void packRGB24A1_UINT32( uint32_t *dst, glm::vec4 rgba );
+
+/* Unpack a RGBA-4float from a rgb24a1 type. Bit 7 contains the one-bit alpha. Bits 0-6 (from LSB) are untoched. */
+VOXOWL_HOST_AND_DEVICE glm::vec4 unpackRGB24A1_UINT32( uint32_t rgb24a1 );
 
 /*
  * Misc functions

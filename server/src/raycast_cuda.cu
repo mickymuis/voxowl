@@ -55,7 +55,7 @@ RaycasterCUDA::setCudaErrorStr(cudaError_t code, char *file, int line )
 VOXOWL_DEVICE
 glm::vec4
 voxel( volumeDevice_t v, glm::ivec3 index ) {
-    glm::ivec3 block =blockPosition( v.format, index );
+    glm::ivec3 block =glm_ivec3_16( blockPosition( v.format, ivec3_16( index ) ) );
     glm::vec4 vox;
 
     switch( v.format ) {
@@ -81,6 +81,10 @@ voxel( volumeDevice_t v, glm::ivec3 index ) {
             int bit_offs =index.z % voxelsPerBlock( v.format );
             vox =unpackRGBA_RGB24_8ALPHA1_UINT32( rgb24_8alpha1, bit_offs );
 
+            break;
+        }
+        case VOXEL_RGB24A1_UINT32: {
+            vox =unpackRGB24A1_UINT32( tex3D( volume_texture, block.x, block.y, block.z ) );
             break;
         }
     }
@@ -419,14 +423,14 @@ RaycasterCUDA::beginRender() {
     voxelmap_t voxelmap =getVolume()->data();
     
     // Allocate the volume on the device, if neccesary
-    bool realloc_volume = !d_volume.data || ( d_volume.size != voxelmap.size ) || ( d_volume.format != voxelmap.format );
+    bool realloc_volume = !d_volume.data || ( d_volume.size != glm_ivec3_16( voxelmap.size ) ) || ( d_volume.format != voxelmap.format );
 
     if( realloc_volume ) { // Reallocate the volume on the device end
         if( d_volume.data )
             RETURN_IF_ERR( cudaFreeArray( d_volume.data ) );
 
-        d_volume.size =voxelmap.size;
-        d_volume.blocks =voxelmap.blocks;
+        d_volume.size =glm_ivec3_16( voxelmap.size );
+        d_volume.blocks =glm_ivec3_16( voxelmap.blocks );
         d_volume.format =voxelmap.format;
 
         cudaExtent v_extent;
@@ -436,6 +440,7 @@ RaycasterCUDA::beginRender() {
 
         switch( voxelmap.format ) {
             // We differentiate between byte and word block sizes
+            case VOXEL_RGB24A1_UINT32:
             case VOXEL_RGB24_8ALPHA1_UINT32:
             case VOXEL_RGBA_UINT32:
                 v_extent = make_cudaExtent( d_volume.blocks.x, d_volume.blocks.y, d_volume.blocks.z );

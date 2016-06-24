@@ -8,7 +8,7 @@ find_package(CUDA REQUIRED)
 set(
     CUDA_NVCC_FLAGS
     ${CUDA_NVCC_FLAGS};
-    -rdc=true -O3 -gencode arch=compute_20,code=sm_20
+    -g -rdc=true -O3 -gencode arch=compute_20,code=sm_20
     )
 
 set( CUDA_SEPARABLE_COMPILATION ON )
@@ -55,6 +55,7 @@ cuda_add_executable(
     src/camera.cpp
     src/actor.cpp
     src/voxel.cu
+    src/svmipmap.cu
     src/mengersponge.cpp
     src/bmp.cpp
     src/raycast.cu
