@@ -148,7 +148,7 @@ main( int argc, char** argv ) {
     Camera camera( "camera", &root );
     
     MengerSponge sponge( "mengersponge", &root );
-    sponge.setDepth( 4 );
+    sponge.setDepth( 5 );
 
     RaycasterCUDA renderer( "renderer", &root );
     renderer.setFramebuffer( &fb );

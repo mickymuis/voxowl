@@ -66,8 +66,16 @@ VOXOWL_HOST_AND_DEVICE size_t voxelsPerBlock( voxel_format_t f );
 /* Returns the number of blocks that are required to store a volume of size, given format f */
 VOXOWL_HOST_AND_DEVICE ivec3_16_t blockCount( voxel_format_t f, ivec3_16_t size );
 
-/* Returns the indices of the block that contains the voxel in position, given format f */
+/* If the given format has cubical blocks, returns the width of one block along each axis.
+   For example, if blockWidth() = 2, f stores blocks of 2x2x2 voxels */
+VOXOWL_HOST_AND_DEVICE unsigned int blockWidth( voxel_format_t f );
+
+/* Returns the indices of the block that contains the voxel in `position`, given format f */
 VOXOWL_HOST_AND_DEVICE ivec3_16_t blockPosition( voxel_format_t f, ivec3_16_t position );
+
+/* Returns the 1D offset within a block to the voxel in `position`, given format f 
+   Column-major (z) indexing is utilized */
+VOXOWL_HOST_AND_DEVICE unsigned int blockOffset( voxel_format_t f, ivec3_16_t position );
 
 /* Return the size of a volume's data in bytes */
 VOXOWL_HOST_AND_DEVICE size_t voxelmapSize( voxelmap_t * );

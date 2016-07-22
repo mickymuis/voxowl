@@ -6,9 +6,17 @@
 #define SVMM_MAGIC1 'S'
 #define SVMM_MAGIC2 'v'
 
+#define SVMM_TERMINAL_BIT_MASK 0x40
+#define SVMM_STUB_BIT_MASK 0x20
+#define SVMM_OFFSET_BITS 5
+#define SVMM_OFFSET_BITS_MASK 0x1f
+#define SVMM_SUBBLOCK_WIDTH 2
+
 typedef struct {
     uint32_t next;
-    ivec3_16_t mipmap_size;
+    uint32_t mipmap_factor;
+    voxel_format_t format;
+    uint8_t blockwidth;
 
 } svmm_level_header_t;
 
@@ -40,17 +48,36 @@ typedef struct {
 typedef struct {
     unsigned int blockwidth;
     unsigned int rootwidth;
+    float delta;
+    bool bitmapBaselevel;
     voxel_format_t format;
 } svmm_encode_opts_t;
 
+// Encode functions
+
 VOXOWL_HOST int svmmEncode( svmipmap_t*,  voxelmap_t* uncompressed, svmm_encode_opts_t opts );
-VOXOWL_HOST int svmmEncode( svmipmap_t*,  voxelmap_t* uncompressed );
+VOXOWL_HOST int svmmEncode( svmipmap_t*,  voxelmap_t* uncompressed, int quality );
+
+/* Attempts to set optimal settings for a given voxelmap automatically
+   The quality parameter ranges 1-100 */
+VOXOWL_HOST void svmmSetOpts( svmm_encode_opts_t *opts, 
+                              voxelmap_t* uncompressed, 
+                              int quality );
 
 VOXOWL_HOST void svmmFree( svmipmap_t* );
+
+// Decode functions
 
 VOXOWL_HOST void svmmReadHeader( svmm_header_t*, void *buffer );
 VOXOWL_HOST void svmmRead( svmipmap_t*, void *buffer );
 
 VOXOWL_HOST glm::vec4 svmmDecodeVoxel( svmipmap_t* m, ivec3_16_t position );
 
-VOXOWL_HOST bool svmmTest( voxelmap_t* uncompressed );
+VOXOWL_HOST bool svmmTest( voxelmap_t* uncompressed, int quality );
+
+// Utility functions
+
+VOXOWL_HOST bool isTerminal( uint32_t rgb24a1 );
+VOXOWL_HOST void setTerminal( uint32_t* rgb24a1, bool terminal );
+VOXOWL_HOST bool isStub( uint32_t rgb24a1 );
+VOXOWL_HOST void setStub( uint32_t *rgb24a1, bool stub );

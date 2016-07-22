@@ -71,14 +71,14 @@ voxel( volumeDevice_t v, glm::ivec3 index ) {
         }
         case VOXEL_BITMAP_UINT8: {
             uint8_t bitmap =tex3D( volume_texture, block.x, block.y, block.z );
-            int bit_offs =index.z % voxelsPerBlock( v.format );
-            //int bit_offs =index.z - block.z*8;
+            unsigned bit_offs =blockOffset( v.format, ivec3_16(index) );
+            //int bit_offs =index.z % voxelsPerBlock( v.format );
             vox =glm::vec4( (int)unpackBIT_UINT8( bitmap, bit_offs ) );
             break;
         }
         case VOXEL_RGB24_8ALPHA1_UINT32: {
             uint32_t rgb24_8alpha1 =tex3D( volume_texture, block.x, block.y, block.z );
-            int bit_offs =index.z % voxelsPerBlock( v.format );
+            unsigned bit_offs =blockOffset( v.format, ivec3_16(index) );
             vox =unpackRGBA_RGB24_8ALPHA1_UINT32( rgb24_8alpha1, bit_offs );
 
             break;

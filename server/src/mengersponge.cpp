@@ -72,18 +72,18 @@ MengerSponge::makeSponge() {
 
     ivec3_16_t size =ivec3_16( s );
     
-    //voxelmapCreate( &volume, VOXEL_RGBA_UINT32, s, s, s );
-    voxelmapCreate( &volume, VOXEL_RGB24A1_UINT32, s, s, s );
+    voxelmapCreate( &volume, VOXEL_RGBA_UINT32, s, s, s );
+//    voxelmapCreate( &volume, VOXEL_RGB24_8ALPHA1_UINT32, s, s, s );
 
     for( int x=0; x < size.x; x++ )
         for( int y=0; y < size.y; y++ )
             for( int z=0; z < size.z; z++ ) {
-/*                    float p =(float)(( size.x/2 - abs(x - size.x / 2.f) ) / (size.x / 2.f))
+                   float p =(float)(( size.x/2 - abs(x - size.x / 2.f) ) / (size.x / 2.f))
                     * (float)(( size.y/2 - abs(y - size.y / 2.f) ) / (size.y / 2.f))
                     * (float)(( size.z/2 - abs(z - size.z / 2.f) ) / (size.z / 2.f));
                     p *= randomf( .5f, 1.f );
                     float c =(p > 0.05f);
-                    voxelmapPack( &volume, glm::ivec3(x,y,z), glm::vec4(1,1,1,c) );*/
+//                    voxelmapPack( &volume, ivec3_16(x,y,z), glm::vec4(1,1,1,c) );
 
                 voxelmapPack( &volume, ivec3_16(x,y,z), glm::vec4(
                     (float)x / (float)(size.x-1),
@@ -92,7 +92,7 @@ MengerSponge::makeSponge() {
                     1.f ));
             }
 
-    uint32_t white =0xffffffff;
+//    uint32_t white =0xffffffff;
 //    uint8_t white =0xff;
 //    voxelmapFill( &volume, &white ); 
     menger( &volume, glm_ivec3_16(size), glm_ivec3_16(size), glm::ivec3(0) );
@@ -105,5 +105,5 @@ MengerSponge::makeSponge() {
     volume.blocks =mipmap->header.rootsize;
     volume.format =VOXEL_RGB24A1_UINT32;
     volume.data =(char*)mipmap->buffer + mipmap->header.root + sizeof( svmm_level_header_t );*/
-    svmmTest( &volume );
+    svmmTest( &volume, 90 );
 }
