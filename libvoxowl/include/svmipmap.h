@@ -1,10 +1,10 @@
 #pragma once
-#include "platform.h"
+#include "voxowl_platform.h"
 #include "voxel.h"
 
 #define SVMM_DEFAULT_BLOCKWIDTH 4
-#define SVMM_MAGIC1 'S'
-#define SVMM_MAGIC2 'v'
+#define SVMM_MAGIC1 'V'
+#define SVMM_MAGIC2 's'
 
 #define SVMM_TERMINAL_BIT_MASK 0x40
 #define SVMM_STUB_BIT_MASK 0x20

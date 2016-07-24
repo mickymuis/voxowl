@@ -1,4 +1,4 @@
-#include "voxel.h"
+#include "../include/voxel.h"
 #include <stdio.h>
 
 /* Initialize volume and allocate its buffer */
@@ -8,6 +8,7 @@ voxelmapCreate( voxelmap_t *v, voxel_format_t f, ivec3_16_t size ) {
     v->format =f;
     v->size =size;
     v->blocks =blockCount( f, size );
+    v->scale =ivec3_16( 1 );
     v->data =malloc( voxelmapSize( v ) );
 }
 
@@ -200,6 +201,13 @@ voxelmapSize( voxelmap_t *v ) {
 //    double bytes = (double)(bitsPerVoxel( v->format ) * v->size.x * v->size.y * v->size.z) / 8;
 //    return (size_t)ceil( bytes );
     return v->blocks.x * v->blocks.y * v->blocks.z * bytesPerBlock( v->format );
+}
+
+VOXOWL_HOST_AND_DEVICE 
+size_t 
+voxelmapSize( voxel_format_t f, ivec3_16_t size, ivec3_16_t scale ) {
+    ivec3_16_t blocks =blockCount( f, size );
+    return blocks.x * blocks.y * blocks.z * bytesPerBlock( f );
 }
 
 /* Access a block in an array based volume by coordinates. Returns a pointer to the first element */

@@ -1,10 +1,10 @@
 #pragma once
-#define GLM_FORCE_CXX98
+//#define GLM_FORCE_CXX98
 
 /* This file describes the elemtary data type of the voxel and voxelmap
    A voxelmap is (in this context) defined as a contiguous three-dimensional array of voxels */
 
-#include "platform.h"
+#include "voxowl_platform.h"
 #include <inttypes.h>
 #include "glm/mat4x4.hpp"
 #include "glm/vec3.hpp"
@@ -38,6 +38,7 @@ VOXOWL_HOST_AND_DEVICE inline glm::ivec3 glm_ivec3_16( ivec3_16_t v ) { return g
 typedef struct {
     ivec3_16_t size;
     ivec3_16_t blocks;
+    ivec3_16_t scale;
     voxel_format_t format;
     void *data;
 } voxelmap_t;
@@ -79,6 +80,7 @@ VOXOWL_HOST_AND_DEVICE unsigned int blockOffset( voxel_format_t f, ivec3_16_t po
 
 /* Return the size of a volume's data in bytes */
 VOXOWL_HOST_AND_DEVICE size_t voxelmapSize( voxelmap_t * );
+VOXOWL_HOST_AND_DEVICE size_t voxelmapSize( voxel_format_t f, ivec3_16_t size, ivec3_16_t scale =ivec3_16(1) );
 
 /* Access an array based volume by coordinates. Returns a pointer to the block containing the element */
 VOXOWL_HOST_AND_DEVICE void* voxel( voxelmap_t*, ivec3_16_t position );

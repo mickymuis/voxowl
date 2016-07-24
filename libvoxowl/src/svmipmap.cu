@@ -1,4 +1,4 @@
-#include "svmipmap.h"
+#include "../include/svmipmap.h"
 #include <stdio.h>
 #include <assert.h>
 

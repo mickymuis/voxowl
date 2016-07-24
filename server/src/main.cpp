@@ -7,8 +7,8 @@
 #include <iostream>
 #include <list>
 
-#include "server.h"
 #include "platform.h"
+#include "server.h"
 #include "types.h"
 #include "parser.h"
 #include "packetbuffer.h"

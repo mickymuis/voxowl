@@ -18,6 +18,7 @@ find_package_handle_standard_args(TJPEG DEFAULT_MSG TJPEG_LIBRARY TJPEG_INCLUDE_
 
 if(TJPEG_FOUND)
     set(TJPEG_LIBRARIES ${TJPEG_LIBRARY})
+    add_definitions(-DHAS_TURBOJPEG)
 endif()
 
 set (CMAKE_CXX_FLAGS "-std=c++0x -g")
