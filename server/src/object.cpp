@@ -1,6 +1,8 @@
 #include "object.h"
 #include "parser.h"
 
+static std::mt19937_64 rd;
+
 std::string 
 Variant::toString() const{
     switch( _type ) {
@@ -257,6 +259,11 @@ Object::hasMeta( META_TYPE type, const std::string& reference, const std::string
 Variant 
 Object::callMeta( const std::string&, const Variant::list& ) {
     return Variant();
+}
+
+void 
+Object::newConfiguration() {
+    config =rd();
 }
 
 bool

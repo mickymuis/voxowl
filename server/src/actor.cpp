@@ -34,25 +34,26 @@ Actor::modelMatrix() {
     if( !m_uptodate ) {
         glm::mat4 mat( 1.0 );
                     
-            mat =glm::scale( mat, glm::vec3( m_scale ) );
-            mat =glm::rotate( mat, 
-                    m_orbit.x, glm::vec3( 1.0, 0.0, 0.0 ) );
-            mat =glm::rotate( mat, 
-                     m_orbit.y, glm::vec3( 0.0, 1.0, 0.0 ) );
-            mat =glm::rotate( mat, 
-                    m_orbit.z, glm::vec3( 0.0, 0.0, 1.0 ) );
-            
-            mat =glm::translate( mat, m_position );
-            mat =glm::rotate( mat, 
-                    m_rotation.x, glm::vec3( 1.0, 0.0, 0.0 ) );
-            mat =glm::rotate( mat, 
-                    m_rotation.y, glm::vec3( 0.0, 1.0, 0.0 ) );
-            mat =glm::rotate( mat, 
-                    m_rotation.z, glm::vec3( 0.0, 0.0, 1.0 ) );
-                    
-            m_matCache =mat;
+        //mat =glm::scale( mat, glm::vec3( m_scale ) );
+        mat =glm::rotate( mat, 
+                m_orbit.x, glm::vec3( 1.0, 0.0, 0.0 ) );
+        mat =glm::rotate( mat, 
+                 m_orbit.y, glm::vec3( 0.0, 1.0, 0.0 ) );
+        mat =glm::rotate( mat, 
+                m_orbit.z, glm::vec3( 0.0, 0.0, 1.0 ) );
+        
+        mat =glm::translate( mat, m_position );
+        mat =glm::rotate( mat, 
+                m_rotation.x, glm::vec3( 1.0, 0.0, 0.0 ) );
+        mat =glm::rotate( mat, 
+                m_rotation.y, glm::vec3( 0.0, 1.0, 0.0 ) );
+        mat =glm::rotate( mat, 
+                m_rotation.z, glm::vec3( 0.0, 0.0, 1.0 ) );
+        //mat =glm::scale( mat, glm::vec3( 1, 1, 5 ) );
+                
+        m_matCache =mat;
 
-            m_uptodate =true;
+        m_uptodate =true;
     }
     return m_matCache;
 }

@@ -1,21 +1,22 @@
 #include "../include/voxel.h"
 #include <stdio.h>
+#include <string.h>
 
 /* Initialize volume and allocate its buffer */
 VOXOWL_HOST
 void 
-voxelmapCreate( voxelmap_t *v, voxel_format_t f, ivec3_16_t size ) {
+voxelmapCreate( voxelmap_t *v, voxel_format_t f, ivec3_32_t size ) {
     v->format =f;
     v->size =size;
     v->blocks =blockCount( f, size );
-    v->scale =ivec3_16( 1 );
+    v->scale =ivec3_32( 1 );
     v->data =malloc( voxelmapSize( v ) );
 }
 
 VOXOWL_HOST
 void 
 voxelmapCreate( voxelmap_t *v, voxel_format_t f, uint32_t size_x, uint32_t size_y, uint32_t size_z ) {
-    voxelmapCreate( v, f, ivec3_16( size_x, size_y, size_z ) );
+    voxelmapCreate( v, f, ivec3_32( size_x, size_y, size_z ) );
 }
 
 /* Free a volume's buffer */
@@ -42,8 +43,8 @@ voxelmapSafeCopy( voxelmap_t* dst, voxelmap_t* src ) {
         for( int x =0; x < dst->size.x; x++ )
             for( int y =0; y < dst->size.y; y++ )
                 for( int z =0; z < dst->size.z; z++ ) {
-                    voxelmapPack( dst, ivec3_16( x, y, z ),
-                        voxelmapUnpack( src, ivec3_16( x, y, z ) ) );
+                    voxelmapPack( dst, ivec3_32( x, y, z ),
+                        voxelmapUnpack( src, ivec3_32( x, y, z ) ) );
                 }
     }
     return true;
@@ -148,37 +149,54 @@ VOXOWL_HOST_AND_DEVICE unsigned int blockWidth( voxel_format_t f ) {
 
 /* Returns the number of blocks that are required to store a volume of size, given format f */
 VOXOWL_HOST_AND_DEVICE 
-ivec3_16_t 
-blockCount( voxel_format_t f, ivec3_16_t size ) {
-    ivec3_16_t blocks;
+ivec3_32_t 
+blockCount( voxel_format_t f, ivec3_32_t size ) {
+    ivec3_32_t blocks;
 
     // blockcount = ceil( size / blockwidth(f) )
+    // Optimized out, blockwidth can only be 1 or 2
 
-    unsigned int blockwidth =blockWidth( f );
-    blocks.x =size.x / blockwidth;
-    blocks.y =size.y / blockwidth;
-    blocks.z =size.z / blockwidth;
+    switch( f ) {
+        case VOXEL_BITMAP_UINT8:
+        case VOXEL_RGB24_8ALPHA1_UINT32:
+            // Blockwidth is 2
+            blocks =ivec3_sar32( size ); // Arithmetic shift right by one
+            // Round up to nearest multiple of two
+            if( size.x & 0x1 )
+                blocks.x++;
+            if( size.y & 0x1 )
+                blocks.y++;
+            if( size.z & 0x1 )
+                blocks.z++;
+            break;
+        default:
+            blocks =size;
+            break;
 
-    if( size.x % blockwidth )
-        blocks.x++;
-    if( size.y % blockwidth )
-        blocks.y++;
-    if( size.z % blockwidth )
-        blocks.z++;
+    }
 
     return blocks;
-
 }
 
 /* Returns the indices of the block that contains the voxel in position, given format f */
 VOXOWL_HOST_AND_DEVICE 
-ivec3_16_t 
-blockPosition( voxel_format_t f, ivec3_16_t position ) {
-    ivec3_16_t block = position;
-    unsigned int blockwidth =blockWidth( f );
-    block.x =position.x / blockwidth;
-    block.y =position.y / blockwidth;
-    block.z =position.z / blockwidth;
+ivec3_32_t 
+blockPosition( voxel_format_t f, ivec3_32_t position ) {
+    ivec3_32_t block = position;
+    // block = floor( size / blockwidth(f) )
+    // Optimized out, blockwidth can only be 1 or 2
+
+    switch( f ) {
+        case VOXEL_BITMAP_UINT8:
+        case VOXEL_RGB24_8ALPHA1_UINT32:
+            // Blockwidth is 2
+            block =ivec3_sar32( position ); // Arithmetic shift right by one
+            break;
+        default:
+            block =position;
+            break;
+
+    }
     return block;
 }
 
@@ -186,7 +204,7 @@ blockPosition( voxel_format_t f, ivec3_16_t position ) {
    Column-major (z) indexing is utilized */
 VOXOWL_HOST_AND_DEVICE 
 unsigned int 
-blockOffset( voxel_format_t f, ivec3_16_t position ) {
+blockOffset( voxel_format_t f, ivec3_32_t position ) {
     unsigned int blockwidth =blockWidth( f );
     unsigned int x_offs = position.x % blockwidth;
     unsigned int y_offs = position.y % blockwidth;
@@ -205,8 +223,8 @@ voxelmapSize( voxelmap_t *v ) {
 
 VOXOWL_HOST_AND_DEVICE 
 size_t 
-voxelmapSize( voxel_format_t f, ivec3_16_t size, ivec3_16_t scale ) {
-    ivec3_16_t blocks =blockCount( f, size );
+voxelmapSize( voxel_format_t f, ivec3_32_t size, ivec3_32_t scale ) {
+    ivec3_32_t blocks =blockCount( f, size );
     return blocks.x * blocks.y * blocks.z * bytesPerBlock( f );
 }
 
@@ -215,7 +233,7 @@ VOXOWL_HOST_AND_DEVICE
 void* 
 voxel( voxelmap_t* v, uint32_t x, uint32_t y, uint32_t z ) {
     size_t bytes_per_block =bytesPerBlock( v->format );
-    ivec3_16_t block =blockPosition( v->format, ivec3_16( x, y, z ) );
+    ivec3_32_t block =blockPosition( v->format, ivec3_32( x, y, z ) );
     //size_t offset =( v->blocks.z * v->blocks.y * block.x + v->blocks.z * block.y + block.z ) ;
     // CUDA's textures use column-major order
     size_t offset =( v->blocks.x * v->blocks.y * block.z + v->blocks.x * block.y + block.x ) ; 
@@ -224,7 +242,7 @@ voxel( voxelmap_t* v, uint32_t x, uint32_t y, uint32_t z ) {
 
 VOXOWL_HOST_AND_DEVICE
 void* 
-voxel( voxelmap_t* v, ivec3_16_t position ) {
+voxel( voxelmap_t* v, ivec3_32_t position ) {
     return voxel( v, position.x, position.y, position.z );
 }
 
@@ -245,9 +263,9 @@ voxelmapFill( voxelmap_t* v, void *value ) {
 /* Pack an rgba-4float value into an arbitrarily formatted voxelmap */
 VOXOWL_HOST_AND_DEVICE 
 void 
-voxelmapPack( voxelmap_t* v, ivec3_16_t position, glm::vec4 rgba ) {
+voxelmapPack( voxelmap_t* v, ivec3_32_t position, glm::vec4 rgba ) {
    void *block_ptr =voxel( v, position );
-   ivec3_16_t block =blockPosition( v->format, position );
+   ivec3_32_t block =blockPosition( v->format, position );
    switch( v->format ) {
         case VOXEL_RGBA_UINT32:
             packRGBA_UINT32( (uint32_t*)block_ptr, rgba );
@@ -275,7 +293,7 @@ voxelmapPack( voxelmap_t* v, ivec3_16_t position, glm::vec4 rgba ) {
 /* Unpack an rgba-4float value from an arbitrarily formatted  voxelmap */
 VOXOWL_HOST_AND_DEVICE 
 glm::vec4 
-voxelmapUnpack( voxelmap_t* v, ivec3_16_t position ) {
+voxelmapUnpack( voxelmap_t* v, ivec3_32_t position ) {
    void *block_ptr =voxel( v, position );
    glm::vec4 rgba;
    switch( v->format ) {
@@ -323,6 +341,16 @@ unpackRGBA_UINT32( uint32_t rgba ) {
         (float)((rgba >> 16) & 0xff) / 255.f,
         (float)((rgba >> 8) & 0xff) / 255.f,
         (float)(rgba & 0xff) / 255.f );
+}
+
+VOXOWL_HOST_AND_DEVICE
+glm::vec4
+unpackABGR_UINT32( uint32_t abgr ) {
+    return glm::vec4(
+        (float)(abgr & 0xff) / 255.f,
+        (float)((abgr >> 8) & 0xff) / 255.f,
+        (float)((abgr >> 16) & 0xff) / 255.f,
+        (float)((abgr >> 24) & 0xff) / 255.f );
 }
 
 /* Unpack an rgba-4float value from four uint8s */
@@ -456,7 +484,7 @@ packRGB24A1_UINT32( uint32_t *dst, glm::vec4 rgba ) {
         ((uint32_t)(rgba.r * 255) << 24) |
         ((uint32_t)(rgba.g * 255) << 16) |
         ((uint32_t)(rgba.b * 255) << 8) |
-        (uint32_t)0x80 * (int)(rgba.a >= .5f);
+        (uint32_t)0x80 * (int)(rgba.a >= .1f);
 }
 
 /* Unpack a RGBA-4float from a rgb24a1 type. Bit 7 contains the one-bit alpha. Bits 0-6 (from LSB) are untoched. */
@@ -534,4 +562,22 @@ blendF2B( glm::vec4 src, glm::vec4 dst ) {
     c.b = dst.a*(src.b * src.a) + dst.b;
     c.a = (1.f - src.a) * dst.a;
     return c;
+}
+
+VOXOWL_HOST 
+const char* 
+strVoxelFormat( voxel_format_t f ) {
+    switch( f ) {
+        case VOXEL_RGBA_UINT32:
+            return "RGBA_UINT32";
+        case VOXEL_INTENSITY_UINT8:
+            return "INTENSITY_UINT8";
+        case VOXEL_BITMAP_UINT8:
+            return "BITMAP_UINT8";
+        case VOXEL_RGB24_8ALPHA1_UINT32:
+            return "RGB24_8ALPHA1_UINT32";
+        case VOXEL_RGB24A1_UINT32:
+            return "RGB24A1_UINT32";
+    }
+    return "";
 }

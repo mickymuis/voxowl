@@ -60,6 +60,8 @@ class Variant {
 
 std::ostream & operator<<(std::ostream &os, const Variant& v);
 
+typedef uint64_t config_t;
+
 class Object {
     public:
         enum META_TYPE {
@@ -89,7 +91,9 @@ class Object {
         bool hasMeta( META_TYPE, const std::string& reference ) const;
         bool hasMeta( META_TYPE, const std::string& reference, const std::string& name ) const;
         virtual Variant callMeta( const std::string& method, const Variant::list& args );
-        
+
+        void newConfiguration();
+        config_t getConfiguration() const { return config; }
     
     protected:
         Object( const Object& rhs ) {}
@@ -105,6 +109,7 @@ class Object {
         std::string name;
         PropertyList property_list;
         stringlist_t method_list;
+        config_t config;
     
 };
 

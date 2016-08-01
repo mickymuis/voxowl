@@ -17,6 +17,13 @@ typedef struct {
 } box_t;
 
 typedef struct {
+    glm::vec4 color; //rgba
+    glm::vec3 position;
+    glm::vec3 position_vs; // position in continuous voxel space
+    glm::vec3 normal;
+} fragment_t;
+
+typedef struct {
     glm::mat4 matModelView;
     glm::mat4 matInvModelView;
     glm::vec3 upperLeftNormal;

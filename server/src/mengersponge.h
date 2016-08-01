@@ -1,9 +1,9 @@
 #pragma once
-#define GLM_FORCE_CXX98
+//#define GLM_FORCE_CXX98
 
 #include "volume.h"
 
-class MengerSponge : public Volume {
+class MengerSponge : public VolumeSVMipmap {
     public:
         enum MODE {
             COLORS_RGBA
@@ -14,8 +14,6 @@ class MengerSponge : public Volume {
         void setDepth( int );
         void setMode( int );
 
-        voxelmap_t& data() { return volume; }
-
     private:
         void makeSponge();
 
@@ -23,4 +21,5 @@ class MengerSponge : public Volume {
         int mode;
 
         voxelmap_t volume;
+        svmipmap_t volume_svmm;
 };

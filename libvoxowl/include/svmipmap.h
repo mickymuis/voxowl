@@ -15,6 +15,7 @@
 typedef struct {
     uint32_t next;
     uint32_t mipmap_factor;
+    uint32_t block_count;
     voxel_format_t format;
     uint8_t blockwidth;
 
@@ -23,27 +24,25 @@ typedef struct {
 typedef struct {
     uint8_t magic1;
     uint8_t magic2;
-    ivec3_16_t volume_size;
+    ivec3_32_t volume_size;
     voxel_format_t format;
     uint64_t data_start;
     uint64_t data_length;
     uint8_t levels;
     uint8_t blockwidth;
-    ivec3_16_t rootsize;
+    ivec3_32_t rootsize;
     uint64_t root;
 
 } svmm_header_t;
 
 typedef struct {
     svmm_header_t header;
-    void *buffer;
+    char *data_ptr;
+    size_t data_size;
+    int fd;
+    bool is_mmapped;
 
 } svmipmap_t;
-
-/*typedef enum {
-    SVMM_OCTREE =2,
-    SVMM_BLOCK64 =4
-} svmm_blockmode_t;*/
 
 typedef struct {
     unsigned int blockwidth;
@@ -55,29 +54,35 @@ typedef struct {
 
 // Encode functions
 
-VOXOWL_HOST int svmmEncode( svmipmap_t*,  voxelmap_t* uncompressed, svmm_encode_opts_t opts );
-VOXOWL_HOST int svmmEncode( svmipmap_t*,  voxelmap_t* uncompressed, int quality );
+VOXOWL_HOST ssize_t svmmEncode( svmipmap_t*,  voxelmap_t* uncompressed, svmm_encode_opts_t opts );
+VOXOWL_HOST ssize_t svmmEncode( svmipmap_t*,  voxelmap_t* uncompressed, int quality );
+VOXOWL_HOST ssize_t svmmEncodeFile( const char* filename, voxelmap_t* uncompressed, svmm_encode_opts_t opts );
 
-/* Attempts to set optimal settings for a given voxelmap automatically
+/*! Attempts to set optimal settings for a given voxelmap automatically
    The quality parameter ranges 1-100 */
 VOXOWL_HOST void svmmSetOpts( svmm_encode_opts_t *opts, 
                               voxelmap_t* uncompressed, 
                               int quality );
 
-VOXOWL_HOST void svmmFree( svmipmap_t* );
+VOXOWL_HOST int svmmFree( svmipmap_t* );
 
 // Decode functions
+
+/*! Open the file at `filename`, consisting of a svmm header and a data section.
+ * The returned svmipmap object can be used to decode its contents through memory-mapped i/o */
+VOXOWL_HOST int svmmOpenMapped( svmipmap_t*, const char *filename );
 
 VOXOWL_HOST void svmmReadHeader( svmm_header_t*, void *buffer );
 VOXOWL_HOST void svmmRead( svmipmap_t*, void *buffer );
 
-VOXOWL_HOST glm::vec4 svmmDecodeVoxel( svmipmap_t* m, ivec3_16_t position );
+VOXOWL_HOST glm::vec4 svmmDecodeVoxel( svmipmap_t* m, ivec3_32_t position );
 
+VOXOWL_HOST int svmmDecode( voxelmap_t* v, svmipmap_t* svmm );
 VOXOWL_HOST bool svmmTest( voxelmap_t* uncompressed, int quality );
 
 // Utility functions
 
-VOXOWL_HOST bool isTerminal( uint32_t rgb24a1 );
-VOXOWL_HOST void setTerminal( uint32_t* rgb24a1, bool terminal );
-VOXOWL_HOST bool isStub( uint32_t rgb24a1 );
-VOXOWL_HOST void setStub( uint32_t *rgb24a1, bool stub );
+VOXOWL_HOST_AND_DEVICE bool isTerminal( uint32_t rgb24a1 );
+VOXOWL_HOST_AND_DEVICE void setTerminal( uint32_t* rgb24a1, bool terminal );
+VOXOWL_HOST_AND_DEVICE bool isStub( uint32_t rgb24a1 );
+VOXOWL_HOST_AND_DEVICE void setStub( uint32_t *rgb24a1, bool stub );

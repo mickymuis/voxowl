@@ -41,10 +41,7 @@ connectionSendFunc( const Packet& packet ) {
     
         if( !packet.connection->socket->writeBuffer( packet.payload, packet.size ) ) {
             std::cerr << "Error writing data packet to connection " << packet.connection->getName() << std::endl;
-        } else {
-
-            std::cerr << "Writing data packet to connection " << packet.connection->getName() << " size: " << packet.size << " bytes." << std::endl;
-        }
+        } 
     }
 }
 

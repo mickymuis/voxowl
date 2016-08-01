@@ -9,13 +9,13 @@ find_package(CUDA REQUIRED)
 set(
     CUDA_NVCC_FLAGS
     ${CUDA_NVCC_FLAGS};
-    -g -rdc=true -O3 -gencode arch=compute_${NV_COMPUTE},code=sm_${NV_COMPUTE}
+    -g -rdc=true -O3 -std=c++11 -gencode arch=compute_${NV_COMPUTE},code=sm_${NV_COMPUTE}
     )
 
 set( CUDA_SEPARABLE_COMPILATION ON )
 set( CUDA_PROPAGATE_HOST_FLAGS OFF )
 ## Compiler flags
-LIST(APPEND CMAKE_CXX_FLAGS "-std=c++0x -g")
+LIST(APPEND CMAKE_CXX_FLAGS "-std=c++11 -g")
 
 #SET( CUDA_HOST_COMPILER "g++44" )
 
@@ -58,6 +58,9 @@ cuda_add_executable(
     src/bmp.cpp
     src/raycast.cu
     src/raycast_cuda.cu
+    src/dda_cuda.cu
+    src/svmm_cuda.cu
+    ../libvoxowl/src/ivec3_32.cu
     ../libvoxowl/src/voxel.cu
     ../libvoxowl/src/svmipmap.cu
     ../libvoxowl/src/voxelmap.cpp

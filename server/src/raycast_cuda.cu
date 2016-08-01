@@ -1,4 +1,6 @@
 #include "raycast_cuda.h"
+#include "dda_cuda.h"
+#include "svmm_cuda.h"
 #include "platform.h"
 
 #include "framebuffer.h"
@@ -14,11 +16,11 @@
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/random.hpp>
 #include <vector_types.h>
-#include "bmp.h"
 #include <fstream>
 
+#include <libdivide.h>
+
 // Define global volume and framebuffer handles, for now at least
-texture<uint32_t,3> volume_texture;
 texture<float4,1> ssao_kernel;
 texture<float4,1> ssao_noise;
 surface<void, 2> fb_color_surface;
@@ -33,7 +35,7 @@ random( float min, float max ) {
 // Simple return-on-error mechanism to improve readability
 #define RETURN_IF_ERR(err) { if( setCudaErrorStr((err), __FILE__, __LINE__) ) return false; }
 inline bool
-RaycasterCUDA::setCudaErrorStr(cudaError_t code, char *file, int line )
+RaycasterCUDA::setCudaErrorStr(cudaError_t code, const char *file, int line )
 {
     if (code != cudaSuccess) 
     {
@@ -52,140 +54,6 @@ RaycasterCUDA::setCudaErrorStr(cudaError_t code, char *file, int line )
     return false;
 }
 
-VOXOWL_DEVICE
-glm::vec4
-voxel( volumeDevice_t v, glm::ivec3 index ) {
-    glm::ivec3 block =glm_ivec3_16( blockPosition( v.format, ivec3_16( index ) ) );
-    glm::vec4 vox;
-
-    switch( v.format ) {
-        case VOXEL_RGBA_UINT32: {
-            vox =unpackRGBA_UINT32( tex3D( volume_texture, block.x, block.y, block.z ) );
-            break;
-        }
-        case VOXEL_INTENSITY_UINT8: {
-            uint8_t gray =tex3D( volume_texture, block.x, block.y, block.z );
-            vox =glm::vec4( unpackINTENSITY_UINT8( gray ) );
-            vox.a =(float)(vox.r != 0.f);
-            break;
-        }
-        case VOXEL_BITMAP_UINT8: {
-            uint8_t bitmap =tex3D( volume_texture, block.x, block.y, block.z );
-            unsigned bit_offs =blockOffset( v.format, ivec3_16(index) );
-            //int bit_offs =index.z % voxelsPerBlock( v.format );
-            vox =glm::vec4( (int)unpackBIT_UINT8( bitmap, bit_offs ) );
-            break;
-        }
-        case VOXEL_RGB24_8ALPHA1_UINT32: {
-            uint32_t rgb24_8alpha1 =tex3D( volume_texture, block.x, block.y, block.z );
-            unsigned bit_offs =blockOffset( v.format, ivec3_16(index) );
-            vox =unpackRGBA_RGB24_8ALPHA1_UINT32( rgb24_8alpha1, bit_offs );
-
-            break;
-        }
-        case VOXEL_RGB24A1_UINT32: {
-            vox =unpackRGB24A1_UINT32( tex3D( volume_texture, block.x, block.y, block.z ) );
-            break;
-        }
-    }
-    vox.a *= (float)( glm::all( glm::greaterThanEqual( index, glm::ivec3(0) ) ) && glm::all( glm::lessThan( index, v.size ) ) );
-
-    return vox;
-}
-
-/* Cast one ray r into the volume bounded by v. The actual volume data is obtained from the global volume texture */
-VOXOWL_DEVICE
-fragment_t
-raycast( volumeDevice_t v, const ray_t& r ) {
-    double tmin, tmax;
-    glm::ivec3 size =v.size;
-    
-    fragment_t frag;
-    frag.color =glm::vec4( 0,0,0,1 );
-    frag.normal =glm::vec3(0);
-    frag.position =glm::vec3(0);
-    frag.position_vs =glm::vec3(0);
-
-    box_t b = volumeSizeToAABB( size );
-    if( !rayAABBIntersect( r, b, tmin, tmax ) )
-        return frag;
-
-    glm::vec3 rayEntry = r.origin + r.direction * (float)max( 0.0, tmin );
-    glm::vec3 rayExit = r.origin + r.direction * (float)tmax;
-
-    // Determine the side of the unit cube the ray enters
-    // In order to do this, we need the component with the largest absolute number
-    // These lines are optimized to do so without branching
-    const glm::ivec3 box_plane( 0, 1, 2 ); // X, Y and Z dividing planes
-    glm::vec3 r0 = glm::abs( rayEntry / b.max );
-    float largest =max( r0.x, max( r0.y, r0.z ) ); // Largest relative component
-    glm::ivec3 r1 = glm::floor( r0 / largest ); // Vector with a '1' at the largest component
-    int side = glm::clamp( glm::dot( box_plane, r1 ), 0, 2 );
-   
-    // Map the ray entry from unit-cube space to voxel space
-    largest =max( size.x, max( size.y, size.z ) );
-    glm::vec3 rayEntry_vs =(rayEntry + b.max) * largest;
-
-    // Calculate the index in the volume by chopping off the decimal part
-    glm::ivec3 index = glm::clamp( 
-        glm::ivec3( glm::floor( rayEntry_vs ) ) ,
-        glm::ivec3( 0 ),
-        glm::ivec3( size.x-1, size.y-1, size.z-1 ) );
-
-    frag.position_vs = glm::clamp( 
-        glm::vec3( rayEntry_vs ) ,
-        glm::vec3( 0 ),
-        glm::vec3( size.x-1, size.y-1, size.z-1 ) );
-
-    // Determine the sign of the stepping through the volume
-    glm::ivec3 step = glm::sign( r.direction );
-
-    // deltaDist gives the distance on the ray path for each following dividing plane
-    glm::vec3 deltaDist =glm::abs( glm::vec3( glm::length( r.direction ) ) / r.direction );
-
-    // Computes the distances to the next voxel for each component
-    glm::vec3 boxDist = ( sign( r.direction ) * (glm::vec3(index) - rayEntry_vs)
-                        + (sign( r.direction ) * 0.5f ) + 0.5f ) * deltaDist;
-
-    while(1) {
-
-        if( index[side] < 0 || index[side] >= size[side] )
-            break;
-        
-        glm::vec4 vox = voxel( v, glm::ivec3( glm::floor( frag.position_vs ) ) );
-/*        vox.r *= (3-side)/3.f;
-        vox.g *= (3-side)/3.f;
-        vox.b *= (3-side)/3.f;*/
-
-        frag.color =blendF2B( vox, frag.color );
-
-        if( vox.a == 1.f ) {
-            // We calculate the position in unit-cube space..
-            frag.position =frag.position_vs / (float)largest - b.max;
-            // ..and the normal of the current 'face' of the voxel
-            frag.normal[side] = -step[side];
-            break;
-        }
-
-
-        // Branchless equivalent for
-        //for( int i =0; i < 3; i++ ) 
-        //    if( boxDist[side] > boxDist[i] )
-        //        side =i;*/
-        glm::bvec3 b0= glm::lessThan( boxDist, glm::vec3( boxDist.y, boxDist.z, boxDist.x ) /*boxDist.yzx()*/ );
-        glm::bvec3 b1= glm::lessThanEqual( boxDist, glm::vec3( boxDist.z, boxDist.x, boxDist.y ) /*boxDist.zxy()*/ );
-        glm::ivec3 mask =glm::ivec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );
-        side = glm::dot( box_plane, mask );
-
-        boxDist[side] += deltaDist[side];
-        index[side] += step[side];
-        frag.position_vs[side] += step[side];
-    }
-
-    frag.color.a = 1.f - frag.color.a;
-
-    return frag;
-}
 
 /* Parallel raycast kernel. Computes one fragment depending on position in the threadblock and writes in to the framebuffer */
 VOXOWL_CUDA_KERNEL
@@ -230,7 +98,17 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
             r_cube.origin =r.origin;
             
             // Cast the ray and average it with the other samples
-            fragment_t f = raycast( volume, r_cube );
+            fragment_t f;
+            switch( volume.mode ) {
+                case VOXELMAP:
+                    f = voxelmapRaycast( &volume.volume.voxelmap, r_cube );
+                    break;
+                case SVMM:
+                    f = svmmRaycast( &volume.volume.svmm, r_cube );
+                    break;
+                default:
+                    break;
+            }
             frag.color += f.color;
             frag.position += f.position;
             frag.position_vs +=f.position_vs;
@@ -244,31 +122,41 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
     frag.position_vs *=inv_aa_samples;
     frag.normal *=inv_aa_samples;
 
-    // VSAO
-    float4 noise =tex1D( ssao_noise, (float)x*y );
-    glm::vec3 rvec( noise.x, noise.y, noise.z );
+    // VSAO, only when using voxelmaps (for now )
+    if( volume.mode == VOXELMAP ) {
+        float4 noise =tex1D( ssao_noise, (float)x*y );
+        glm::vec3 rvec( noise.x, noise.y, noise.z );
 
-    // Setup the TBN matrix
-    glm::vec3 tangent = glm::normalize(rvec - frag.normal * glm::dot(rvec, frag.normal));
-    glm::vec3 bitangent = glm::cross(frag.normal, tangent);
-    glm::mat3 tbn(tangent, bitangent, frag.normal);
+        // Setup the TBN matrix
+        glm::vec3 tangent = glm::normalize(rvec - frag.normal * glm::dot(rvec, frag.normal));
+        glm::vec3 bitangent = glm::cross(frag.normal, tangent);
+        glm::mat3 tbn(tangent, bitangent, frag.normal);
 
-    // Obtain the samples
-    float occlusion =0.f;
-    for (int i = 0; i < ssao_info.kernelSize; ++i) {
-        // get sample position:
+        // Obtain the samples
+        float occlusion =0.f;
+        for (int i = 0; i < ssao_info.kernelSize; ++i) {
+            // get sample position:
 
-        float4 k =tex1D( ssao_kernel, i );
-        glm::vec3 kernel_i( k.x, k.y, k.z );
-        glm::vec3 sample = tbn * kernel_i;
-        sample = sample * ssao_info.radius + frag.position_vs + frag.normal;
+            float4 k =tex1D( ssao_kernel, i );
+            glm::vec3 kernel_i( k.x, k.y, k.z );
+            glm::vec3 sample = tbn * kernel_i;
+            sample = sample * ssao_info.radius + frag.position_vs + frag.normal;
+            
+            glm::vec4 vox =voxelTex3D_clamp( 
+                    volume.volume.voxelmap.texture, 
+                    volume.volume.voxelmap.format, 
+                    glm::floor( sample ), 
+                    volume.volume.voxelmap.size );
+            occlusion += vox.a;
+        }
+
         
-        glm::vec4 vox =voxel( volume, glm::floor( sample ) );
-        occlusion += vox.a;
+        frag.color *= (1.f - occlusion / ssao_info.kernelSize );
     }
 
+    // Gamma step
     
-    frag.color *= (1.f - occlusion / ssao_info.kernelSize );
+    frag.color =glm::pow( frag.color, glm::vec4( 1.f / 2.2f ) );
 
 
     // Convert both the position and the normal to view-space
@@ -397,12 +285,95 @@ RaycasterCUDA::RaycasterCUDA( const char* name, Object* parent )
 
 RaycasterCUDA::~RaycasterCUDA() {
 
-        if( d_framebuffer.color_data )
-            cudaFreeArray( d_framebuffer.color_data );
-        if( d_framebuffer.normal_depth_data )
-            cudaFreeArray( d_framebuffer.normal_depth_data );
-        if( d_volume.data )
-            cudaFreeArray( d_volume.data ); 
+    if( d_framebuffer.color_data )
+        cudaFreeArray( d_framebuffer.color_data );
+    if( d_framebuffer.normal_depth_data )
+        cudaFreeArray( d_framebuffer.normal_depth_data );
+    freeVolumeMem();
+}
+
+bool
+RaycasterCUDA::initVoxelmap( voxelmap_t *voxelmap ) {
+    
+    if( !freeVolumeMem() )
+        return false;
+
+    if( !voxelmap || !voxelmap->data )
+        return setError( true, "No data in voxelmap" );
+
+    // Initialize the storage mode
+    d_volume.mode =VOXELMAP;
+    bzero( &d_volume.volume.voxelmap, sizeof( voxelmapDevice_t ) );
+    voxelmapDevice_t *v = &d_volume.volume.voxelmap;
+
+    // Copy the properties from the input voxelmap
+    v->size =glm_ivec3_32( voxelmap->size );
+    v->blocks =glm_ivec3_32( voxelmap->blocks );
+    v->format =voxelmap->format;
+
+    // Allocate an 3D array on the device
+    //
+    cudaExtent v_extent;
+    cudaChannelFormatDesc v_channelDesc;
+
+    printf( "Allocating texture for voxelmap, blocks=(%d,%d,%d), bytes per block=%d\n", 
+            voxelmap->blocks.x, voxelmap->blocks.y, voxelmap->blocks.z, bytesPerBlock( voxelmap->format ) );
+
+    int bits_per_block =bytesPerBlock( voxelmap->format ) * 8;
+
+    v_extent = make_cudaExtent( v->blocks.x, v->blocks.y, v->blocks.z );
+    v_channelDesc = cudaCreateChannelDesc( bits_per_block,0,0,0,cudaChannelFormatKindUnsigned);
+
+    RETURN_IF_ERR( cudaMalloc3DArray( &v->data, &v_channelDesc, v_extent ) );
+
+    // Prepare the parameters to the texture binding
+    //
+    cudaResourceDesc resDesc;
+    memset(&resDesc, 0, sizeof(resDesc));
+    resDesc.resType = cudaResourceTypeArray;
+    resDesc.res.array.array = (cudaArray_t)v->data;
+
+    cudaTextureDesc texDesc;
+    memset(&texDesc, 0, sizeof(texDesc));
+    texDesc.readMode = cudaReadModeElementType;
+    texDesc.filterMode = cudaFilterModePoint;
+
+    // Bind the texture object
+    
+    v->texture =0;
+    RETURN_IF_ERR( cudaCreateTextureObject( &v->texture, &resDesc, &texDesc, NULL ) );
+
+    
+    // Copy the volume to the device
+    // TODO: make separate step
+    cudaMemcpy3DParms copyParams = {0};
+    copyParams.srcPtr   = make_cudaPitchedPtr( voxelmap->data, v_extent.width * bytesPerBlock(voxelmap->format), v_extent.width, v_extent.height);
+    copyParams.dstArray = v->data;
+    copyParams.extent   = v_extent;
+    copyParams.kind     = cudaMemcpyHostToDevice;
+    RETURN_IF_ERR( cudaMemcpy3D(&copyParams) );
+    return true;
+}
+
+bool
+RaycasterCUDA::initSVMM( svmipmap_t *svmm ) {
+    if( !freeVolumeMem() )
+        return false;
+
+    if( !svmm || !svmm->data_ptr )
+        return setError( true, "No data in voxelmap" );
+    
+    d_volume.mode =SVMM;
+    svmipmapDevice_t *d_svmm =&d_volume.volume.svmm;
+    bzero( d_svmm, sizeof( svmipmapDevice_t ) );
+
+    RETURN_IF_ERR( svmmCopyToDevice( d_svmm, svmm ) );
+    return true;
+}
+
+bool
+RaycasterCUDA::initFramebuffer() {
+    return true;
 }
 
 bool 
@@ -419,63 +390,24 @@ RaycasterCUDA::beginRender() {
     const int height =getFramebuffer()->getHeight();
     const dim3 blocksize(16, 16);
 
-    // For now, we only use a voxelmap as input
-    voxelmap_t voxelmap =getVolume()->data();
-    
-    // Allocate the volume on the device, if neccesary
-    bool realloc_volume = !d_volume.data || ( d_volume.size != glm_ivec3_16( voxelmap.size ) ) || ( d_volume.format != voxelmap.format );
+    // Reallocate and upload the volume
+    if( last_config_volume != getVolume()->getConfiguration() ) {
+        last_config_volume = getVolume()->getConfiguration();
 
-    if( realloc_volume ) { // Reallocate the volume on the device end
-        if( d_volume.data )
-            RETURN_IF_ERR( cudaFreeArray( d_volume.data ) );
-
-        d_volume.size =glm_ivec3_16( voxelmap.size );
-        d_volume.blocks =glm_ivec3_16( voxelmap.blocks );
-        d_volume.format =voxelmap.format;
-
-        cudaExtent v_extent;
-        cudaChannelFormatDesc v_channelDesc;
-
-        printf( "Allocating texture for voxelmap, blocks=(%d,%d,%d), bytes per block=%d\n", voxelmap.blocks.x, voxelmap.blocks.y, voxelmap.blocks.z, bytesPerBlock( voxelmap.format ) );
-
-        switch( voxelmap.format ) {
-            // We differentiate between byte and word block sizes
-            case VOXEL_RGB24A1_UINT32:
-            case VOXEL_RGB24_8ALPHA1_UINT32:
-            case VOXEL_RGBA_UINT32:
-                v_extent = make_cudaExtent( d_volume.blocks.x, d_volume.blocks.y, d_volume.blocks.z );
-                v_channelDesc = cudaCreateChannelDesc(32,0,0,0,cudaChannelFormatKindUnsigned);
-                break;
-
-            case VOXEL_INTENSITY_UINT8:
-            case VOXEL_BITMAP_UINT8:
-                // By convention, we store blocks per-byte in the z-direction
-                v_extent = make_cudaExtent( d_volume.blocks.x, d_volume.blocks.y, d_volume.blocks.z );
-                v_channelDesc = cudaCreateChannelDesc(8,0,0,0,cudaChannelFormatKindUnsigned);
-                break;
-
-            default:
-                return setError( true, "Unhandled voxel format" );
-                
+        // First, determine the storage type
+        VolumeVoxelmap* vol;
+        VolumeSVMipmap* vol_svmm;
+        if( (vol =dynamic_cast<VolumeVoxelmap*>(getVolume())) ) {
+            if( !initVoxelmap( vol->getVoxelmap() ) )
+                return false;
+        } else if( vol_svmm =dynamic_cast<VolumeSVMipmap*>(getVolume()) ) {
+            if( !initSVMM( vol_svmm->getSVMipmap() ) )
+                return false;
+        } else {
+            return setError( true, "Volume has unsupported storage class" );
         }
-
-        RETURN_IF_ERR( cudaMalloc3DArray( &d_volume.data, &v_channelDesc, v_extent ) );
-        volume_texture.normalized = false;                      
-        volume_texture.filterMode = cudaFilterModePoint;      
-        volume_texture.addressMode[0] = cudaAddressModeClamp;   
-        volume_texture.addressMode[1] = cudaAddressModeClamp;
-        volume_texture.addressMode[2] = cudaAddressModeClamp;
-        RETURN_IF_ERR( cudaBindTextureToArray( volume_texture, d_volume.data, v_channelDesc ) );
-        
-        // Copy the volume to the device
-        // TODO: make separate step
-        cudaMemcpy3DParms copyParams = {0};
-        copyParams.srcPtr   = make_cudaPitchedPtr( voxelmap.data, v_extent.width * bytesPerBlock(voxelmap.format), v_extent.width, v_extent.height);
-        copyParams.dstArray = d_volume.data;
-        copyParams.extent   = v_extent;
-        copyParams.kind     = cudaMemcpyHostToDevice;
-        RETURN_IF_ERR( cudaMemcpy3D(&copyParams) );
     }
+    
     
     // Allocate the framebuffer on the device, if neccesary
     bool realloc_framebuffer = !d_framebuffer.color_data 
@@ -554,6 +486,32 @@ RaycasterCUDA::synchronize() {
     RETURN_IF_ERR ( cudaMemcpyFromArray( data_ptr, d_framebuffer.color_data, 0, 0, width*height*bpp, cudaMemcpyDeviceToHost ) );
     
 
+    return true;
+}
+
+VOXOWL_HOST
+bool
+RaycasterCUDA::freeVolumeMem() {
+
+    switch( d_volume.mode ) {
+        case VOXELMAP:
+            if( d_volume.volume.voxelmap.data ) {
+                RETURN_IF_ERR( cudaDestroyTextureObject( d_volume.volume.voxelmap.texture ) );
+                RETURN_IF_ERR( cudaFreeArray( d_volume.volume.voxelmap.data ) );
+            }
+
+            break;
+        case SVMM:
+            break;
+        default:
+            break;
+    }
+    return true;
+}
+
+VOXOWL_HOST
+bool
+RaycasterCUDA::freeFramebufferMem() {
     return true;
 }
 

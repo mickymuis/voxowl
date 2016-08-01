@@ -3,7 +3,8 @@
 #include <math.h>
 #include <string.h>
 #include "glm/vec3.hpp"
-#include "svmipmap.h"
+#include <svmipmap.h>
+#include <voxelmap.h>
 
 void 
 menger( voxelmap_t* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
@@ -21,9 +22,9 @@ menger( voxelmap_t* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
                     for( uint16_t i = offs.x; i < offs.x + step; i++ )
                         for( uint16_t j = offs.y; j < offs.y + step; j++ )
                             for( uint16_t k = offs.z; k < offs.z + step; k++ ) {
-                                glm::vec4 color =voxelmapUnpack( V, ivec3_16(i,j,k ) );
+                                glm::vec4 color =voxelmapUnpack( V, ivec3_32(i,j,k ) );
                                 color.a =0.f;
-                                voxelmapPack(  V, ivec3_16( i, j, k ), color );
+                                voxelmapPack(  V, ivec3_32( i, j, k ), color );
                             }
                 }
                 // corner element, expand recursively
@@ -33,12 +34,15 @@ menger( voxelmap_t* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
 }
 
 MengerSponge::MengerSponge( const char *name, Object *parent ) 
-    : Volume( name, parent ) {
+    : VolumeSVMipmap( name, parent ) {
+    //: VolumeVoxelmap( name, parent ) {
     depth =1;
     mode =COLORS_RGBA;
     //memset( &volume, 0, sizeof( voxelmap_t ) );
     volume.data =NULL;
     //makeSponge();
+    setSVMipmap( &volume_svmm );
+    //setVoxelmap( &volume );
 }
 
 MengerSponge::~MengerSponge() {
@@ -68,12 +72,22 @@ MengerSponge::makeSponge() {
     if( volume.data ) 
         voxelmapFree( &volume );
 
+/*    voxelmap_mapped_t vm;
+    if( voxelmapOpenMapped( &vm, "/home/s1407937/data/test.vxwl" ) == -1 ) {
+        perror( "" );
+        fprintf( stderr, "Could not open voxelmap\n" );
+    }
+
+    voxelmapFromMapped( &volume, &vm );
+
+    return;*/
+
     size_t s = (int)pow(3, depth );
 
-    ivec3_16_t size =ivec3_16( s );
+    ivec3_32_t size =ivec3_32( s );
     
     voxelmapCreate( &volume, VOXEL_RGBA_UINT32, s, s, s );
-//    voxelmapCreate( &volume, VOXEL_RGB24_8ALPHA1_UINT32, s, s, s );
+//    voxelmapCreate( &volume, VOXEL_INTENSITY_UINT8, s, s, s );
 
     for( int x=0; x < size.x; x++ )
         for( int y=0; y < size.y; y++ )
@@ -83,9 +97,9 @@ MengerSponge::makeSponge() {
                     * (float)(( size.z/2 - abs(z - size.z / 2.f) ) / (size.z / 2.f));
                     p *= randomf( .5f, 1.f );
                     float c =(p > 0.05f);
-//                    voxelmapPack( &volume, ivec3_16(x,y,z), glm::vec4(1,1,1,c) );
+//                    voxelmapPack( &volume, ivec3_32(x,y,z), glm::vec4(1,1,1,c) );
 
-                voxelmapPack( &volume, ivec3_16(x,y,z), glm::vec4(
+                voxelmapPack( &volume, ivec3_32(x,y,z), glm::vec4(
                     (float)x / (float)(size.x-1),
                     (float)y / (float)(size.y-1),
                     (float)z / (float)(size.z-1),
@@ -94,16 +108,17 @@ MengerSponge::makeSponge() {
 
 //    uint32_t white =0xffffffff;
 //    uint8_t white =0xff;
-//    voxelmapFill( &volume, &white ); 
-    menger( &volume, glm_ivec3_16(size), glm_ivec3_16(size), glm::ivec3(0) );
+//    voxelmapFill( &volume, &white );
+    menger( &volume, glm_ivec3_32(size), glm_ivec3_32(size), glm::ivec3(0) );
     
-/*    svmipmap_t *mipmap =(svmipmap_t*)malloc( sizeof( svmipmap_t) );
-    svmmEncode( mipmap, &volume );
+    svmm_encode_opts_t opts;
+    svmmSetOpts( &opts, &volume, 75 );
+//    opts.bitmapBaselevel =false;
+//    opts.rootwidth =64;
+    bzero( &volume_svmm, sizeof( svmipmap_t ) );
+    svmmEncode( &volume_svmm, &volume, opts );
+
+//    svmmDecode( &volume, &volume_svmm );
     
-//    voxelmapFree( &volume );
-    volume.size =mipmap->header.rootsize;
-    volume.blocks =mipmap->header.rootsize;
-    volume.format =VOXEL_RGB24A1_UINT32;
-    volume.data =(char*)mipmap->buffer + mipmap->header.root + sizeof( svmm_level_header_t );*/
-    svmmTest( &volume, 90 );
+//    svmmTest( &volume, 90 );
 }

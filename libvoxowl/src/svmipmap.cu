@@ -1,40 +1,49 @@
 #include "../include/svmipmap.h"
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 
-#define DATA_RESIZE 1024
+// Unix low-level IO functions
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <fcntl.h>
 
-VOXOWL_HOST int ensureSize( char** ptr, size_t current_size, size_t new_size );
-VOXOWL_HOST ivec3_16_t nextMipmapSize( ivec3_16_t size, ivec3_16_t block_size );
+#define DATA_RESIZE 8192
+
+VOXOWL_HOST int ensureSize( svmipmap_t* m, size_t new_size );
+VOXOWL_HOST ivec3_32_t nextMipmapSize( ivec3_32_t size, ivec3_32_t block_size );
 
 VOXOWL_HOST
 uint32_t
 encodeBlock( voxelmap_t *dst, 
              voxelmap_t *src, 
-             ivec3_16_t offset, 
-             ivec3_16_t size, 
+             ivec3_32_t offset, 
+             ivec3_32_t size, 
              bool *homogenous, 
              bool base_level, 
              svmm_encode_opts_t *opts ) {
     int count =0;
+    glm::vec4 list[size.x*size.y*size.z];
     glm::dvec4 sum;
-    if( homogenous ) *homogenous =false;
+    if( homogenous ) *homogenous =true;
     bool convert =src->format != dst->format;
 
 
     for( int z =offset.z; z < size.z + offset.z && z < src->size.z; z++ )
         for( int y =offset.y; y < size.y + offset.y && y < src->size.y; y++ )
             for( int x =offset.x; x < size.x + offset.x && x < src->size.x; x++ ) {
-                glm::vec4 rgba =voxelmapUnpack( src, ivec3_16( x, y, z ) );
-                count++;
+                glm::vec4 rgba =voxelmapUnpack( src, ivec3_32( x, y, z ) );
+                list[count++] =rgba;
                 sum +=glm::dvec4( rgba );
+
                 if( dst->format == VOXEL_BITMAP_UINT8 )
-                    voxelmapPack( dst, ivec3_16( x - offset.x, y - offset.y, z - offset.z ), glm::vec4( rgba.a >= .5f ) );
+                    voxelmapPack( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ), glm::vec4( rgba.a >= .5f ) );
                 else if( convert )
-                    voxelmapPack( dst, ivec3_16( x - offset.x, y - offset.y, z - offset.z ), rgba );
+                    voxelmapPack( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ), rgba );
                 else {
-                    uint32_t rgb24a1 = *(uint32_t*)voxel( src, ivec3_16( x, y, z ) );
-                    *(uint32_t*)voxel( dst, ivec3_16( x - offset.x, y - offset.y, z - offset.z ) )
+                    uint32_t rgb24a1 = *(uint32_t*)voxel( src, ivec3_32( x, y, z ) );
+                    *(uint32_t*)voxel( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ) )
                         = rgb24a1;
                     // A block can only be homogenous if all its voxels are
                     // terminal (except for the baselevel)
@@ -46,16 +55,23 @@ encodeBlock( voxelmap_t *dst,
     
     // Calculate the average
     glm::vec4 avg =glm::vec4( sum / (double)count );
-    
-    for( int z =offset.z; z < size.z + offset.z && z < src->size.z; z++ )
+   
+    for( int i =0; i < count; i++ ) {
+         // A block is homogenous if all its voxels differ no more
+         // than delta from the average
+         if( homogenous && *homogenous )
+            *homogenous =*homogenous && 
+                glm::all( glm::lessThanEqual ( glm::abs( list[i] - avg), glm::vec4( opts->delta ) ) );
+
+    }/*for( int z =offset.z; z < size.z + offset.z && z < src->size.z; z++ )
         for( int y =offset.y; y < size.y + offset.y && y < src->size.y; y++ )
             for( int x =offset.x; x < size.x + offset.x && x < src->size.x; x++ ) {
-                 glm::vec4 rgba =voxelmapUnpack( src, ivec3_16( x, y, z ) );
+                 glm::vec4 rgba =voxelmapUnpack( src, ivec3_32( x, y, z ) );
                  // A block is homogenous if all its voxels differ no more
                  // than delta from the average
                  if( homogenous && *homogenous && count )
                     *homogenous =*homogenous && glm::all( glm::lessThanEqual ( glm::abs( rgba - avg), glm::vec4( opts->delta ) ) );
-            }
+            }*/
     
     // Currently, only 1-bit alpha is supported because we need the other 
     // 7 bits for bookkeeping
@@ -70,26 +86,26 @@ encodeBlock( voxelmap_t *dst,
 
 VOXOWL_HOST
 voxelmap_t*
-encodeLevel( char **data_ptr, 
-             size_t *data_size, 
+encodeLevel( svmipmap_t * m,
              size_t* data_offset, 
              voxelmap_t *v, 
              bool base_level, 
              unsigned int blockwidth,
-             svmm_encode_opts_t opts ) {
+             svmm_encode_opts_t opts,
+             int *blocks_written ) {
     // Calculate the block size and number of (super)blocks that are contained within
     // the given volume
-    ivec3_16_t block_size =ivec3_16( blockwidth );
-    ivec3_16_t block_count =nextMipmapSize( v->size, block_size );
+    ivec3_32_t block_size =ivec3_32( blockwidth );
+    ivec3_32_t block_count =nextMipmapSize( v->size, block_size );
 
-    //ivec3_16_t blockgroup_size =ivec3_16( blockwidth * 2 );
-    ivec3_16_t blockgroup_count =ivec3_16( block_count.x /2, block_count.y /2, block_count.z /2);
+    //ivec3_32_t blockgroup_size =ivec3_32( blockwidth * 2 );
+    ivec3_32_t blockgroup_count =ivec3_32( block_count.x /2, block_count.y /2, block_count.z /2);
 
     // Allocate a new voxelmap for the parent level. This is a temporary array
     // that will contain the averaged color information one resolution step
     // lower (i.e. one mipmap level higher)
     voxelmap_t *parent =(voxelmap_t*)malloc( sizeof( voxelmap_t ) );
-    voxelmapCreate( parent, opts.format, ivec3_16( blockgroup_count.x * 2 ) );
+    voxelmapCreate( parent, opts.format, block_count );
 
     // This structure will be used to populate the blocks of the current level
     voxelmap_t block;
@@ -106,8 +122,9 @@ encodeLevel( char **data_ptr,
     // Offset (number of blocks) within the level
     uint64_t level_offset =0;
 
-    for( int z=0; z < blockgroup_count.z; z++ )
-        for( int y=0; y < blockgroup_count.y; y++ )
+    for( int z=0; z < blockgroup_count.z; z++ ) {
+        printf( "Writing Z-Blockgroup %d\n", z );
+        for( int y=0; y < blockgroup_count.y; y++ ) {
             for( int x=0; x < blockgroup_count.x; x++ ) {
                 uint64_t blockgroup_level_offset =level_offset;
                 
@@ -115,15 +132,13 @@ encodeLevel( char **data_ptr,
                     for( int j=0; j < 2; j++ )
                         for( int i=0; i < 2; i++ ) { 
                             // Prepare to write a new block into the data pointer
-                            *data_size =ensureSize( data_ptr, 
-                                                    *data_size, 
-                                                    *data_offset + bytes_per_block );
-                            block.data =(char*)*data_ptr + *data_offset;
+                            ensureSize( m, *data_offset + bytes_per_block );
+                            block.data =m->data_ptr + *data_offset;
                             //memset( block.data, 0xff, bytes_per_block ); // DEBUG
                             
                             bool homogenous;
                             // Calculate the offset into the source voxelmap
-                            ivec3_16_t offset =ivec3_16( (2 * x + i) * blockwidth, 
+                            ivec3_32_t offset =ivec3_32( (2 * x + i) * blockwidth, 
                                                          (2 * y + j) * blockwidth, 
                                                          (2 * z + k) * blockwidth);
                             // encodeBlock() will calculate the average and copy the
@@ -148,7 +163,7 @@ encodeLevel( char **data_ptr,
                             avg |= (uint32_t)(bits >> bit_offs);
 
                             // Write the average to the parent level temporary
-                            *(uint32_t*)voxel( parent, ivec3_16( 2*x+i, 2*y+j, 2*z+k ) ) =avg;
+                            *(uint32_t*)voxel( parent, ivec3_32( 2*x+i, 2*y+j, 2*z+k ) ) =avg;
 
                             // If the calculated block is NOT homogenous, we actually need
                             // to store it. A homogenous block contains only the same values
@@ -159,14 +174,17 @@ encodeLevel( char **data_ptr,
                                 // We also increment the level_offset, i.e.: the amount
                                 // actual 'useful' blocks we've written so far
                                 level_offset++;
+                                (*blocks_written)++;
                             }
                 }
             }
+        }
+    }
    return parent; 
 }
 
 VOXOWL_HOST 
-int 
+ssize_t 
 svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
 {
     // Only accepts formats that reserve the lower 8 bits for structural information
@@ -177,8 +195,11 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
             return -1;
     }
 
-    size_t data_size = sizeof( svmm_header_t ) + DATA_RESIZE; 
-    char *data_ptr =(char*)malloc( data_size );
+    if( !m->is_mmapped ) {
+        m->data_size = sizeof( svmm_header_t ) + DATA_RESIZE; 
+        m->data_ptr =(char*)malloc( m->data_size );
+    }
+
     size_t data_offset =sizeof( svmm_header_t );
     size_t noffset =0; // The negative offset that points 'back' to the next level
    
@@ -207,25 +228,25 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
         // If we're not the base level, we add an header to the beginning
         //if( v != uncompressed ) {
             data_offset += sizeof( svmm_level_header_t );
-            data_size =ensureSize( &data_ptr, data_size, data_offset );
+            m->data_size =ensureSize( m, data_offset );
         //} 
         //else fprintf( stderr, "base" );
 
-        
+        int block_count =0;
         // Encode the current mipmap level into blocks
-        voxelmap_t *parent =encodeLevel( &data_ptr, 
-                                         &data_size, 
+        voxelmap_t *parent =encodeLevel( m, 
                                          &data_offset,
                                          v, 
                                          v == uncompressed, 
                                          blockwidth,
-                                         opts
+                                         opts,
+                                         &block_count
                                          );
 
 
         // If we're not the base level, cleanup and set the next point to the
         // correct offset (negative/backward)
-        svmm_level_header_t *lheader =(svmm_level_header_t*)(data_ptr + level_begin);
+        svmm_level_header_t *lheader =(svmm_level_header_t*)(m->data_ptr + level_begin);
         memset( lheader, 0, sizeof( svmm_level_header_t ) );
         lheader->next =noffset;
         if( v == uncompressed && opts.bitmapBaselevel )
@@ -234,6 +255,7 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
             lheader->format =opts.format;
         lheader->blockwidth =blockwidth;
         lheader->mipmap_factor =mipmap_factor;
+        lheader->block_count =block_count;
         
         if( v != uncompressed ) {
             //voxelmapFree( v );
@@ -242,8 +264,10 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
         noffset =data_offset - level_begin;
         //fprintf( stderr, "noffset: %d, data offset: %d\n", noffset, level_begin );
 
-        fprintf( stdout, "level #%d: datasize: %d format: %d next mipmap level size: %d x %d x %d\n",
-            levels-1, noffset, lheader->format, parent->size.x, parent->size.y, parent->size.z );
+        fprintf( stdout, "level #%d: datasize: %d format: %d non-homogenous blocks %d (%d%) parent mipmap level size: %d x %d x %d\n",
+            levels-1, noffset, lheader->format, 
+            block_count, (int)((float)block_count / (float)(parent->size.x*parent->size.y*parent->size.z) * 100),
+            parent->size.x, parent->size.y, parent->size.z );
 
         levels++;
         mipmap_factor *= blockwidth;
@@ -252,7 +276,7 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
 
     // Write the top/root level
     // 'v' should now contain the root-level voxelmap
-    svmm_level_header_t *rootheader =(svmm_level_header_t*)(data_ptr + data_offset);
+    svmm_level_header_t *rootheader =(svmm_level_header_t*)(m->data_ptr + data_offset);
     rootoffset =data_offset;
     data_offset += sizeof( svmm_level_header_t );
     
@@ -260,15 +284,16 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
     rootmap.format =opts.format;
     rootmap.size =v->size;
     rootmap.blocks =blockCount( rootmap.format, v->size );
-    rootmap.data =data_ptr + data_offset;
+    rootmap.data =m->data_ptr + data_offset;
 
-    data_size =ensureSize( &data_ptr, data_size, data_offset + voxelmapSize( &rootmap ) );
+    ensureSize( m, data_offset + voxelmapSize( &rootmap ) );
     // Set the offset to the next level
     memset( rootheader, 0, sizeof( svmm_level_header_t ) );
     rootheader->next =noffset; // may be zero if only one level is present
     rootheader->format =rootmap.format;
     rootheader->mipmap_factor =mipmap_factor;
-    rootheader->blockwidth =opts.rootwidth;
+    rootheader->blockwidth =1;//opts.rootwidth;
+    rootheader->block_count =1;
     // Copy the data
     voxelmapSafeCopy( &rootmap, v );
     data_offset += voxelmapSize( &rootmap );
@@ -282,34 +307,80 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
 
 
     // Resize the buffer to fit exactly
-    data_ptr =(char*)realloc( data_ptr, data_offset );
-    fprintf( stdout, "Total size: %dK, original size: %dK\n", data_offset/1024, voxelmapSize( uncompressed ) / 1024 );
+    m->data_size =data_offset;
+    if( !m->is_mmapped )
+        m->data_ptr =(char*)realloc( m->data_ptr, m->data_size );
+    else
+        ftruncate( m->fd, m->data_size );
 
     // Write the header on top of the buffer
-    svmm_header_t *header =(svmm_header_t*)data_ptr;
+    svmm_header_t *header =(svmm_header_t*)m->data_ptr;
     header->magic1 =SVMM_MAGIC1;
     header->magic2 =SVMM_MAGIC2;
     header->volume_size =uncompressed->size;
     header->format =opts.format; // unused for now
     header->data_start =sizeof( svmm_header_t );
-    header->data_length =data_offset -  sizeof( svmm_header_t);
+    header->data_length =m->data_size -  sizeof( svmm_header_t);
     header->levels =levels;
     header->blockwidth =opts.blockwidth;
     header->rootsize =rootmap.blocks;
     header->root =rootoffset;
 
-    m->buffer =data_ptr;
     memcpy( &m->header, header, sizeof( svmm_header_t ) );
     
-    return 0;    
+    return m->data_size;    
 }
 
 VOXOWL_HOST 
-int 
+ssize_t
 svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, int quality ) {
     svmm_encode_opts_t opts;
     svmmSetOpts( &opts, uncompressed, quality );
     return svmmEncode( m, uncompressed, opts );
+}
+
+VOXOWL_HOST 
+ssize_t
+svmmEncodeFile( const char* filename, voxelmap_t* uncompressed, svmm_encode_opts_t opts ) {
+
+    int fd =open( filename, O_CREAT | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR );
+    if( fd == -1 )
+        return -1;
+
+    // We reserve twice the uncompressed size in virtual memory
+    // and DATA_RESIZE bytes initially in the file.
+
+    size_t data_size =DATA_RESIZE + sizeof( svmm_header_t );
+    size_t vm_max =voxelmapSize( uncompressed ) * 2;
+
+    ftruncate( fd, data_size );
+
+    caddr_t addr =(caddr_t)mmap( (caddr_t)0, vm_max, PROT_READ|PROT_WRITE, MAP_FILE | MAP_SHARED, fd, 0 );
+
+    if( addr == (caddr_t)-1 ) {
+        close( fd );
+        return -1;
+    }
+
+    // Success, create a svmipmap object and pass it to the encode function
+    
+    svmipmap_t svmm;
+    svmm.is_mmapped =true;
+    svmm.data_ptr =(char*)addr;
+    svmm.data_size =data_size;
+    svmm.fd =fd;
+
+    int r =svmmEncode( &svmm, uncompressed, opts );
+
+    // Sync and cleanup
+    
+    if( msync( addr, /*svmm.data_size*/ vm_max, MS_SYNC ) == -1 )
+        return -1;
+    if( munmap( addr, /*svmm.data_size*/ vm_max ) == -1 )
+        return -1;
+    close( fd );
+
+    return r;
 }
 
 /* Attempts to set optimal settings for a given voxelmap automatically
@@ -327,10 +398,53 @@ svmmSetOpts( svmm_encode_opts_t *opts,
 }
 
 VOXOWL_HOST 
-void 
+int
 svmmFree( svmipmap_t* m ) {
-    if( m->buffer )
-        free( m->buffer );
+    if( !m->is_mmapped ) {
+        if( m->data_ptr )
+            free( m->data_ptr );
+    } else {
+        if( msync( m->data_ptr, m->data_size, MS_SYNC ) == -1 )
+            return -1;
+        if( munmap( m->data_ptr, m->data_size ) == -1 )
+            return -1;
+        close( m->fd );
+    }
+    return 0;
+}
+
+VOXOWL_HOST 
+int 
+svmmOpenMapped( svmipmap_t* svmm, const char *filename ) {
+    int fd =open( filename, O_RDONLY );
+    if( fd == -1 )
+        return -1;
+
+    if( read( fd, (void*)&svmm->header, sizeof( svmm_header_t ) ) == -1 ) {
+        close( fd );
+        return -1;
+    }
+
+    if( svmm->header.magic1 != SVMM_MAGIC1 || 
+        svmm->header.magic2 != SVMM_MAGIC2 ) {
+        close( fd );
+        return -1;
+    }
+
+    lseek( fd, 0, SEEK_SET );
+    size_t len =svmm->header.data_start + svmm->header.data_length;
+
+    svmm->data_ptr =(char*)mmap( (caddr_t)0, len, PROT_READ, MAP_SHARED, fd, 0 );
+
+    if( svmm->data_ptr == (char*)-1 ) {
+        close( fd );
+        return -1;
+    }
+
+    svmm->fd =fd;
+    svmm->data_size =len;
+    return 0;
+
 }
 
 VOXOWL_HOST 
@@ -343,12 +457,12 @@ VOXOWL_HOST
 void 
 svmmRead( svmipmap_t* m, void *buffer ) {
     svmmReadHeader( &m->header, buffer );
-    m->buffer =buffer;
+    m->data_ptr =(char*)buffer;
 }
 
 VOXOWL_HOST
 uint64_t
-getBlockOffset( voxelmap_t *block, ivec3_16_t subblock_index, ivec3_16_t block_offset, size_t blocksize ) {
+getBlockOffset( voxelmap_t *block, ivec3_32_t subblock_index, ivec3_32_t block_offset, size_t blocksize ) {
     uint64_t offset =0;
     int skip =0;
     int n =0;
@@ -362,10 +476,10 @@ getBlockOffset( voxelmap_t *block, ivec3_16_t subblock_index, ivec3_16_t block_o
                 // The least significant 6 bits are used to
                 // store (a part) of the in total 48 bits that
                 // contain the offset of the current blockgroup
-                ivec3_16_t abs_index =ivec3_16( i + subblock_index.x, 
+                ivec3_32_t abs_index =ivec3_32( i + subblock_index.x, 
                                                 j + subblock_index.y, 
                                                 k + subblock_index.z );
-                //uint32_t rgb24a1 =*(uint32_t*)voxel( subblock, ivec3_16( i, j, k ) );
+                //uint32_t rgb24a1 =*(uint32_t*)voxel( subblock, ivec3_32( i, j, k ) );
                 uint32_t rgb24a1 =*(uint32_t*)voxel( block, abs_index );
                 int bit_offs =6*(k*4+j*2+i); // column-major
                 offset |= ((uint64_t)(rgb24a1 & 0x3f)) << bit_offs;
@@ -377,13 +491,6 @@ getBlockOffset( voxelmap_t *block, ivec3_16_t subblock_index, ivec3_16_t block_o
     // this subblock. Now skip another 'block_idx' blocks to reach the exact
     // block we're looking for
 
-    // DEBUG
-/*    if( (offset & DEBUG_43_47) != DEBUG_43_47 )
-        fprintf( stderr, "*** Bits 43-47 are NOT set!\n" );
-    else
-        fprintf( stderr, "*** Bits 43-47 are set.\n" );
-    offset &= ~DEBUG_43_47;*/
-
     offset +=skip;
     offset *=blocksize;
     return offset;
@@ -391,8 +498,8 @@ getBlockOffset( voxelmap_t *block, ivec3_16_t subblock_index, ivec3_16_t block_o
 
 VOXOWL_HOST 
 glm::vec4 
-svmmDecodeVoxel( svmipmap_t* m, ivec3_16_t position ) {
-    char *data_ptr =(char*)m->buffer;
+svmmDecodeVoxel( svmipmap_t* m, ivec3_32_t position ) {
+    char *data_ptr =(char*)m->data_ptr;
     svmm_header_t *header =&m->header;
     int level =header->levels;;
 
@@ -416,23 +523,23 @@ svmmDecodeVoxel( svmipmap_t* m, ivec3_16_t position ) {
     while( 1 ) {
        
         level--;
-        mipmap_factor = pow( header->blockwidth, level ); 
+        mipmap_factor = lheader->mipmap_factor; 
 
         // First, calculate the absolute index of the voxel on the current mipmap level
-        ivec3_16_t abs_index =ivec3_16( position.x / mipmap_factor,
+        ivec3_32_t abs_index =ivec3_32( position.x / mipmap_factor,
                                         position.y / mipmap_factor,
                                         position.z / mipmap_factor );
 
         // Translate into a relative index into the corresponding block
-        ivec3_16_t block_index =ivec3_16( abs_index.x % block.size.x,
+        ivec3_32_t block_index =ivec3_32( abs_index.x % block.size.x,
                                           abs_index.y % block.size.y,
                                           abs_index.z % block.size.z );
         // The block is devided in subblocks: calculate the offset within the subblock
-        ivec3_16_t block_offset = ivec3_16( block_index.x % 2 ? 1 : 0,
+        ivec3_32_t block_offset = ivec3_32( block_index.x % 2 ? 1 : 0,
                                             block_index.y % 2 ? 1 : 0,
                                             block_index.z % 2 ? 1 : 0 );
         // Finally, calculate the index of the first block of the subblock
-        ivec3_16_t subblock_index =block_index; 
+        ivec3_32_t subblock_index =block_index; 
         subblock_index.x -=block_offset.x;
         subblock_index.y -=block_offset.y;
         subblock_index.z -=block_offset.z;
@@ -474,7 +581,7 @@ svmmDecodeVoxel( svmipmap_t* m, ivec3_16_t position ) {
 
         // Prepare to read this block
         block.format =lheader->format;
-        block.size =ivec3_16( block_width );
+        block.size =ivec3_32( block_width );
         block.blocks =blockCount( block.format, block.size );
         block.data =data_ptr + offset + sizeof( svmm_level_header_t );
         
@@ -486,9 +593,23 @@ svmmDecodeVoxel( svmipmap_t* m, ivec3_16_t position ) {
 }
 
 VOXOWL_HOST 
+int 
+svmmDecode( voxelmap_t* v, svmipmap_t* svmm ) {
+
+    for( int x=0; x < v->size.x; x++ )
+        for( int y=0; y < v->size.y; y++ )
+            for( int z=0; z < v->size.z; z++ ) {
+                glm::vec4 enc =svmmDecodeVoxel( svmm, ivec3_32( x, y, z ) );
+                voxelmapPack( v, ivec3_32( x, y, z ), enc );
+            }
+    return 0;
+}
+
+VOXOWL_HOST 
 bool 
 svmmTest( voxelmap_t* uncompressed, int quality ) {
     svmipmap_t mipmap;
+    mipmap.is_mmapped =false;
     svmm_encode_opts_t opts;
     svmmSetOpts( &opts, uncompressed, quality );
     svmmEncode( &mipmap, uncompressed, opts );
@@ -499,8 +620,8 @@ svmmTest( voxelmap_t* uncompressed, int quality ) {
         for( int y=0; y < uncompressed->size.y; y++ )
             for( int z=0; z < uncompressed->size.z; z++ ) {
                 //fprintf( stderr, "@ %d, %d, %d: ", x, y, z );
-                glm::vec4 orig =voxelmapUnpack( uncompressed, ivec3_16( x, y, z ) );
-                glm::vec4 enc =svmmDecodeVoxel( &mipmap, ivec3_16( x, y, z ) );
+                glm::vec4 orig =voxelmapUnpack( uncompressed, ivec3_32( x, y, z ) );
+                glm::vec4 enc =svmmDecodeVoxel( &mipmap, ivec3_32( x, y, z ) );
                 bool test =glm::all( glm::lessThanEqual ( glm::abs( orig - enc ), glm::vec4( opts.delta ) ) );
                 if( !test ) {
                     if( !errors++ )
@@ -508,7 +629,7 @@ svmmTest( voxelmap_t* uncompressed, int quality ) {
                         orig.r, orig.g, orig.b, orig.a, enc.r, enc.g, enc.b, enc.a, opts.delta, x, y, z );
                 }
                 //DEBUG
-                voxelmapPack( uncompressed, ivec3_16( x, y, z ), enc );
+                voxelmapPack( uncompressed, ivec3_32( x, y, z ), enc );
             }
     fprintf( stdout, "Compressed size: %d, uncompressed size: %d, ratio: %d%\n",
         mipmap.header.data_length, voxelmapSize( uncompressed ), 
@@ -519,18 +640,24 @@ svmmTest( voxelmap_t* uncompressed, int quality ) {
 
 VOXOWL_HOST
 int 
-ensureSize( char** ptr, size_t current_size, size_t new_size ) {
-    if( current_size < new_size ) {
-        *ptr =(char*)realloc( *ptr, new_size + DATA_RESIZE );
-        return new_size + DATA_RESIZE;
+ensureSize( svmipmap_t *m, size_t new_size ) {
+    if( m->data_size < new_size ) {
+        new_size +=DATA_RESIZE;
+
+        if( !m->is_mmapped )
+            m->data_ptr =(char*)realloc( m->data_ptr, new_size );
+        else
+            ftruncate( m->fd, new_size );
+        m->data_size =new_size;
+        return new_size;
     }
-    return current_size;
+    return m->data_size;
 }
 
 VOXOWL_HOST
-ivec3_16_t
-nextMipmapSize( ivec3_16_t size, ivec3_16_t block_size ) {
-    ivec3_16_t block_count =ivec3_16( size.x / block_size.x, 
+ivec3_32_t
+nextMipmapSize( ivec3_32_t size, ivec3_32_t block_size ) {
+    ivec3_32_t block_count =ivec3_32( size.x / block_size.x, 
                                       size.y / block_size.y, size.z / block_size.z );
 
     if( size.x % block_size.x )
@@ -549,26 +676,26 @@ nextMipmapSize( ivec3_16_t size, ivec3_16_t block_size ) {
     return block_count;
 }
 
-VOXOWL_HOST
+VOXOWL_HOST_AND_DEVICE
 bool 
 isTerminal( uint32_t rgb24a1 ) {
     return (rgb24a1 & SVMM_TERMINAL_BIT_MASK);
 }
 
-VOXOWL_HOST 
+VOXOWL_HOST_AND_DEVICE 
 void 
 setTerminal( uint32_t* rgb24a1, bool terminal ) {
     *rgb24a1 &= ~SVMM_TERMINAL_BIT_MASK;
     *rgb24a1 |= (terminal ? SVMM_TERMINAL_BIT_MASK : 0x0);
 }
 
-VOXOWL_HOST 
+VOXOWL_HOST_AND_DEVICE 
 bool 
 isStub( uint32_t rgb24a1 ) {
     return (rgb24a1 & SVMM_STUB_BIT_MASK);
 }
 
-VOXOWL_HOST 
+VOXOWL_HOST_AND_DEVICE 
 void 
 setStub( uint32_t *rgb24a1, bool stub ) {
     *rgb24a1 &= ~SVMM_STUB_BIT_MASK;

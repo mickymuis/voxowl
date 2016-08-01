@@ -1,30 +1,45 @@
 #pragma once
 
 #include "actor.h"
-#include "voxel.h"
+#include <voxel.h>
+#include <svmipmap.h>
 
 class Volume : public Actor {
     public:
         Volume( const char *name, Object* parent =0 );
         ~Volume();
 
-        // TODO: needs to be restructured 
+        virtual void* data_ptr() =0;
+        virtual ivec3_32_t size() const =0;
 
-        virtual voxelmap_t& data() =0;
+};
 
-/*        uint32_t sizeX() const { return size_x; }
-        uint32_t sizeY() const { return size_y; }
-        uint32_t sizeZ() const { return size_z; }
+class VolumeVoxelmap : public Volume {
+    public:
+        VolumeVoxelmap( const char *name, Object* parent =0 );
+        ~VolumeVoxelmap();
 
-        void *data() { return data_ptr; }
-        size_t dataSize() { return data_size; }
+        void setVoxelmap( voxelmap_t * );
+        voxelmap_t* getVoxelmap();
 
-        int format() { return data_format; }
-    
+        void* data_ptr();
+        ivec3_32_t size() const;
+
     protected:
-        uint32_t size_x, size_y, size_z;
-        void *data_ptr;
-        size_t data_size;
-        int data_format;*/
+        voxelmap_t* voxelmap;
+};
 
+class VolumeSVMipmap : public Volume {
+    public:
+        VolumeSVMipmap( const char *name, Object* parent =0 );
+        ~VolumeSVMipmap();
+
+        void setSVMipmap( svmipmap_t * );
+        svmipmap_t* getSVMipmap();
+
+        void* data_ptr();
+        ivec3_32_t size() const;
+
+    protected:
+        svmipmap_t* svmm;
 };

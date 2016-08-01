@@ -8,7 +8,7 @@ Camera::Camera( const char* name, Object *parent )
 
     near =1.f;
     far =100.f;
-    fov =60.f;
+    fov =50.f;
     aspect =1.f;
     position =glm::vec3( 1.f, .3f, -1.f );
     target =glm::vec3(0);

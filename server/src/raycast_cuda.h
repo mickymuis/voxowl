@@ -3,14 +3,25 @@
 #include "raycast.h"
 #include "renderer.h"
 #include "voxel.h"
+#include "svmipmap.h"
+#include "dda_cuda.h"
+#include "svmm_cuda.h"
 
-typedef struct {
-    glm::ivec3 size;
-    glm::ivec3 blocks;
+typedef enum {
+    NOT_INITIALIZED =0,
+    VOXELMAP,
+    SVMM
+} storage_mode_t;
+
+struct volumeDevice_t {
     glm::mat4 matModel;
-    cudaArray *data;
-    voxel_format_t format;
-} volumeDevice_t;
+    union __volume {
+        __volume(){}
+        voxelmapDevice_t voxelmap;
+        svmipmapDevice_t svmm;
+    } volume;
+    storage_mode_t mode;
+};
 
 typedef struct {
     int width, height;
@@ -20,12 +31,6 @@ typedef struct {
     voxowl_pixel_format_t format;
 } framebufferDevice_t;
 
-typedef struct {
-    glm::vec4 color; //rgba
-    glm::vec3 position;
-    glm::vec3 position_vs; // position in continuous voxel space
-    glm::vec3 normal;
-} fragment_t;
 
 typedef struct {
     int kernelSize;
@@ -44,9 +49,18 @@ class RaycasterCUDA : public Renderer {
         bool synchronize();
         
     private:
-        bool setCudaErrorStr( cudaError_t code, char *file, int line );
+        bool initVoxelmap( voxelmap_t *v );
+        bool initSVMM( svmipmap_t *svmm );
+        bool initFramebuffer();
+        
+        bool freeVolumeMem();
+        bool freeFramebufferMem();
+        
+        bool setCudaErrorStr( cudaError_t code, const char *file, int line );
 
         volumeDevice_t d_volume;
+        config_t last_config_volume;
+
         framebufferDevice_t d_framebuffer;
 
         VOXOWL_HOST bool initSSAO();

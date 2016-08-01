@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 2.8)
 
+# Treat CUDA files a regular C++ sources in this case
+list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS cu)
+# .. but because of a bug in CMAKE this doesn't work. hack:
+set(CMAKE_CXX_SYSROOT_FLAG_CODE "list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS cu)")
+# .. gcc troubles us as well. Force it to compile .cu files
+#if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  add_definitions("-g -x c++")
+#endif()
+
+project( voxowl-convert CXX )
+
 set( LOCAL_BUILD "~/local" )
 
 find_path(TIFF_INCLUDE_DIR tiff.h HINTS ${LOCAL_BUILD}/include)
@@ -25,14 +36,18 @@ link_directories( )
 
 #find_package(TIFF REQUIRED HINTS ${LOCAL_BUILD}/include)
 
+message("CMAKE_CXX_SOURCE_FILE_EXTENSIONS ${CMAKE_CXX_SOURCE_FILE_EXTENSIONS}")
+
 # For compilation ...
 # Specify target & source files to compile it from
 add_executable(
     voxowl-convert
     src/main.cpp
+    src/voxowl_convert.cpp
     ../libvoxowl/src/voxel.cu
     ../libvoxowl/src/svmipmap.cu
     ../libvoxowl/src/voxelmap.cpp
+    ../libvoxowl/src/ivec3_32.cu
     )
 
 # For linking ...

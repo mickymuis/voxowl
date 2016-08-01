@@ -1,26 +1,15 @@
-#include <voxowl_platform.h>
-#include <voxowl.h>
-#include <voxelmap.h>
-#include <voxel.h>
-#include <svmipmap.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+
+#include "voxowl_convert.h"
 
 typedef enum {
     IN_UNKNOWN,
     IN_TIFF,
     IN_VOXOWL
 } in_filetype_t;
-
-typedef enum {
-    OUT_UNKNOWN,
-    OUT_VOXELMAP,
-    OUT_SVMM
-} out_filetype_t;
-
-
 
 void 
 printHelp( char *exec ) {
@@ -53,11 +42,11 @@ parseInFiletype( in_filetype_t *type, char *str ) {
 }
 
 void
-parseOutFiletype( out_filetype_t *type, char *str ) {
+parseOutFiletype( filetype_t *type, char *str ) {
     if( strncmp( str, "svmm", 4 ) == 0 )
-        *type = OUT_SVMM;
+        *type = FILETYPE_SVMM;
     if( strncmp( str, "voxelmap", 9 ) == 0 )
-        *type = OUT_VOXELMAP;
+        *type = FILETYPE_VOXELMAP;
 }
 
 void
@@ -98,65 +87,66 @@ parseNumber( int* n, char* str, int max ) {
 
 int 
 main( int argc, char **argv ) {
-    char *in_filename =0;
-    char *out_filename =0;
-    in_filetype_t in_filetype =IN_UNKNOWN;
-    out_filetype_t out_filetype =OUT_VOXELMAP;
-    bool silent =false;
-    bool verify =false;
-    bool set_baselevel_bitmap =false;
-    int set_blockwidth =0;
-    int set_rootwidth =0;
-    int set_quality =0;
-    bool set_voxel_format =false;
-    voxel_format_t voxel_format;
+    convert_settings_t s;
+    s.in_filename =0;
+    s.out_filename =0;
+    s.silent =false;
+    s.verify =false;
+    s.set_baselevel_bitmap =false;
+    s.set_blockwidth =0;
+    s.set_rootwidth =0;
+    s.set_quality =75; // default quality?
+    s.set_voxel_format =false;
 
+    in_filetype_t in_filetype =IN_UNKNOWN;
+    s.out_filetype =FILETYPE_VOXELMAP;
+    
     for( int i =1; i < argc; i++ ) {
         if( strncmp( argv[i], "-i", 2 ) == 0 ) {
             parseInFiletype( &in_filetype, argv[++i] );    
         } else if( strncmp( argv[i], "-o", 2 ) == 0 ) {
-            parseOutFiletype( &out_filetype, argv[++i] );
+            parseOutFiletype( &s.out_filetype, argv[++i] );
         } else if( strncmp( argv[i], "-f", 2 ) == 0 ) {
-            if( !parseVoxelFormat( &voxel_format, argv[++i] ) ) {
+            if( !parseVoxelFormat( &s.voxel_format, argv[++i] ) ) {
                 fprintf( stderr, "Unknown format '%s'\n\n", argv[i] );
                 return -1;
             } else
-                set_voxel_format =true;
+                s.set_voxel_format =true;
         } else if( strncmp( argv[i], "-q", 2 ) == 0 ) {
-            if( !parseNumber( &set_quality, argv[++i], 100 ) ) {
+            if( !parseNumber( &s.set_quality, argv[++i], 100 ) ) {
                 return -1;
             }
         } else if( strncmp( argv[i], "-w", 2 ) == 0 ) {
-            if( !parseNumber( &set_blockwidth, argv[++i], 128 ) ) {
+            if( !parseNumber( &s.set_blockwidth, argv[++i], 128 ) ) {
                 return -1;
             }
-            if( set_blockwidth % 2 ) {
+            if( s.set_blockwidth % 2 ) {
                 fprintf( stderr, "Blockwidth must be multiple of two.\n\n" );
                 return -1;
             }
         } else if( strncmp( argv[i], "-r", 2 ) == 0 ) {
-            if( !parseNumber( &set_rootwidth, argv[++i], 1024 ) ) {
+            if( !parseNumber( &s.set_rootwidth, argv[++i], 1024 ) ) {
                 return -1;
             }
-            if( set_rootwidth % 2 ) {
+            if( s.set_rootwidth % 2 ) {
                 fprintf( stderr, "Rootwidth must be multiple of two.\n\n" );
                 return -1;
             }
         } else if( strncmp( argv[i], "-c", 2 ) == 0 ) {
-            set_baselevel_bitmap =true;
+            s.set_baselevel_bitmap =true;
         } else if( strncmp( argv[i], "-s", 2 ) == 0 ) {
-            silent =true;
+            s.silent =true;
         } else if( strncmp( argv[i], "-v", 2 ) == 0 ) {
-            verify =true;
+            s.verify =true;
         } else if( strncmp( argv[i], "-h", 2 ) == 0 ) {
             printHelp( argv[0] );
             return 0;
         } else {
-            if( !in_filename ) {
+            if( !s.in_filename ) {
                 parseInFilename( &in_filetype, argv[i] );
-                in_filename =argv[i];
-            } else if( !out_filename ) {
-                out_filename =argv[i];
+                s.in_filename =argv[i];
+            } else if( !s.out_filename ) {
+                s.out_filename =argv[i];
             } else {
                 fprintf( stderr, "Stray argument '%s'\n\n", argv[i] );
                 printHelp( argv[0] );
@@ -164,16 +154,36 @@ main( int argc, char **argv ) {
             }
         }
     }
-    if( !in_filename || !out_filename ) {
+    if( !s.in_filename || !s.out_filename ) {
         fprintf( stderr, "To few files specified\n\n" );
         printHelp( argv[0] );
         return -1;
     }
-    if( !in_filetype || !out_filetype ) {
+    if( !in_filetype || !s.out_filetype ) {
         fprintf( stderr, "Filetype(s) not recognized. Try -i\n\n" );
         printHelp( argv[0] );
         return -1;
     }
+    if( in_filetype == IN_VOXOWL ) {
+        // We need to peek into the file to determine its precise format
+        FILE* f =fopen( s.in_filename, "r" );
+        if( !f ) {
+            fprintf( stderr, "Cannot open '%s' for reading\n", s.in_filename );
+            return -1;
+        }
+        char buf[2];
+        fread( buf, 1, 2, f );
+        if( buf[0] == VOXELMAP_MAGIC1 && buf[1] == VOXELMAP_MAGIC2 )
+            s.in_filetype =FILETYPE_VOXELMAP;
+        else if( buf[0] == SVMM_MAGIC1 && buf[1] == SVMM_MAGIC2 )
+            s.in_filetype =FILETYPE_SVMM;
+        else {
+            fprintf( stderr, "'%s' is not a Voxowl file format.\n", s.in_filename );
+            return -1;
+        }
+        fclose( f );
+    } else
+        s.in_filetype =FILETYPE_TIFF;
 
-    return 0;
+    return convert( s );
 }

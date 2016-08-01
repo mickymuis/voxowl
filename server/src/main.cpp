@@ -35,7 +35,6 @@ incoming_packet( const Packet& p_recv ) {
 
     if( p_recv.mode == Packet::CHAR ) {
         std::string str( (char*)p_recv.payload, p_recv.size );
-        std::cerr << str.c_str() << std::endl;
             
         bool last =false, error;
         Variant v;
