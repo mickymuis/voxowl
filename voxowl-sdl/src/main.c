@@ -143,7 +143,9 @@ main ( int argc, char **argv ) {
     }
    
     const char* refresh_cmd ="renderer.render()\nframebuffer.write()";
-
+    const char* rotate_left_cmd ="mengersponge.rotate(0.0, -0.1, 0.0)";
+    const char* rotate_right_cmd ="mengersponge.rotate(0.0, 0.1, 0.0)";
+    
     frame_info_t frame;
     frame_init( &frame );
     _texture =0;
@@ -203,6 +205,16 @@ main ( int argc, char **argv ) {
                                             quit = true;
                                             break;
                                     case SDLK_r: {
+                                            voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            break;
+                                    }
+                                    case SDLK_LEFT: {
+                                            voxowl_sendline( &sock, rotate_left_cmd, strlen( rotate_left_cmd ) );
+                                            voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            break;
+                                    }
+                                    case SDLK_RIGHT: {
+                                            voxowl_sendline( &sock, rotate_right_cmd, strlen( rotate_right_cmd ) );
                                             voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
                                             break;
                                     }
