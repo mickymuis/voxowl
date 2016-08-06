@@ -47,9 +47,9 @@ voxelTex3D_clamp(
         glm::ivec3 index, 
         glm::ivec3 clamp_size ) {
     glm::vec4 vox =voxelTex3D( texture, format, index );
-//    vox.a *= (float)( glm::all( glm::greaterThanEqual( index, glm::ivec3(0) ) ) && glm::all( glm::lessThan( index, clamp_size ) ) );
-    if(! (float)( glm::all( glm::greaterThanEqual( index, glm::ivec3(0) ) ) && glm::all( glm::lessThan( index, clamp_size ) ) ) )
-        vox =glm::vec4(1,0,0,1);
+    vox.a *= (float)( glm::all( glm::greaterThanEqual( index, glm::ivec3(0) ) ) && glm::all( glm::lessThan( index, clamp_size ) ) );
+/*    if(! (float)( glm::all( glm::greaterThanEqual( index, glm::ivec3(0) ) ) && glm::all( glm::lessThan( index, clamp_size ) ) ) )
+        vox =glm::vec4(1,0,0,1);*/
 
     return vox;
 }
@@ -64,7 +64,7 @@ voxelmapRaycast( voxelmapDevice_t *v, const ray_t& r ) {
     fragment_t frag;
     frag.color =glm::vec4( 0,0,0,1 );
     frag.normal =glm::vec3(0);
-    frag.position =glm::vec3(0);
+    frag.position =glm::vec3(0,0,-1000.f);
     frag.position_vs =glm::vec3(0);
 
     box_t b = volumeSizeToAABB( size );
@@ -101,6 +101,9 @@ voxelmapRaycast( voxelmapDevice_t *v, const ray_t& r ) {
     // Determine the sign of the stepping through the volume
     glm::ivec3 step = glm::sign( r.direction );
 
+    // EDIT: mitigate the division-by-zero problem
+    glm::bvec3 zeros =glm::equal( r.direction, glm::vec3(0) );
+    glm::vec3 direction =glm::vec3(glm::not_(zeros)) * r.direction + glm::vec3(zeros) * glm::vec3(.00000001f); 
     // deltaDist gives the distance on the ray path for each following dividing plane
     glm::vec3 deltaDist =glm::abs( glm::vec3( glm::length( r.direction ) ) / r.direction );
 
@@ -109,10 +112,11 @@ voxelmapRaycast( voxelmapDevice_t *v, const ray_t& r ) {
                         + (sign( r.direction ) * 0.5f ) + 0.5f ) * deltaDist;
 
     
-    bool first =true;
     while(1) {
 
-        if( index[side] < 0 || index[side] >= size[side] )
+  //      if( index[side] < 0 || index[side] >= size[side] )
+  //          break;
+        if( glm::any( glm::lessThan( index, glm::ivec3(0) ) ) || glm::any( glm::greaterThanEqual( index, size ) ) )
             break;
         
         glm::vec4 vox = voxelTex3D( v->texture, v->format, glm::ivec3( glm::floor( frag.position_vs ) ) );
@@ -122,15 +126,11 @@ voxelmapRaycast( voxelmapDevice_t *v, const ray_t& r ) {
 
         frag.color =blendF2B( vox, frag.color );
 
-        if( vox.a > 0.01f && first ) {
+        if( frag.color.a < 0.1f ) {
             // We calculate the position in unit-cube space..
             frag.position =frag.position_vs / (float)largest - b.max;
             // ..and the normal of the current 'face' of the voxel
             frag.normal[side] = -step[side];
-            first =false;
-        }
-
-        if( frag.color.a < 0.1f ) {
             break;
         }
 
@@ -141,12 +141,16 @@ voxelmapRaycast( voxelmapDevice_t *v, const ray_t& r ) {
         //        side =i;*/
         glm::bvec3 b0= glm::lessThan( boxDist, glm::vec3( boxDist.y, boxDist.z, boxDist.x ) /*boxDist.yzx()*/ );
         glm::bvec3 b1= glm::lessThanEqual( boxDist, glm::vec3( boxDist.z, boxDist.x, boxDist.y ) /*boxDist.zxy()*/ );
-        glm::vec3 mask =glm::ivec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );
-        side = glm::dot( box_plane, mask );
+        glm::vec3 mask =glm::vec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );
+/*              glm::vec3 boxDist2 =glm::floor( boxDist );
+                glm::bvec3 b0= glm::lessThanEqual( boxDist2, glm::vec3( boxDist2.y, boxDist2.z, boxDist2.x ) );
+                glm::bvec3 b1= glm::lessThanEqual( boxDist2, glm::vec3( boxDist2.z, boxDist2.x, boxDist2.y ) );
+                glm::vec3 mask =glm::vec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );*/
+//        side = glm::dot( box_plane, mask );
 
-        boxDist[side] += deltaDist[side];
-        index[side] += step[side];
-        frag.position_vs[side] += step[side];
+        boxDist += deltaDist * mask;
+        index += step * glm::ivec3(mask);
+        frag.position_vs += step * glm::ivec3(mask);
     }
 
     frag.color.a = 1.f - frag.color.a;

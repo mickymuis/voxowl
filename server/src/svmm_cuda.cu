@@ -1,6 +1,6 @@
+#include <voxowl_platform.h>
 #include "svmm_cuda.h"
 #include "dda_cuda.h"
-#include <voxowl_platform.h>
 #include <driver_types.h>
 #include <cmath>
 #include <voxel.h>
@@ -24,7 +24,7 @@ VOXOWL_HOST
 static inline uint32_t 
 log2_p2(uint32_t x)
 {
-    return 32 - __builtin_clz (x - 1);
+    return 31 - __builtin_clz (x);
 }
 
 VOXOWL_HOST
@@ -142,6 +142,9 @@ svmmRaycast( svmipmapDevice_t* v, const ray_t& r ) {
     // Determine the sign of the stepping through the volume
     glm::ivec3 step = glm::sign( r.direction );
 
+    // EDIT: mitigate the division-by-zero problem
+    glm::bvec3 zeros =glm::equal( r.direction, glm::vec3(0) );
+    glm::vec3 direction =glm::vec3(glm::not_(zeros)) * r.direction + glm::vec3(zeros) * glm::vec3(.00000001f); 
     // deltaDist gives the distance on the ray path for each following dividing plane
     glm::vec3 deltaDist =glm::abs( glm::vec3( glm::length( r.direction ) ) / r.direction );
 
@@ -172,13 +175,13 @@ svmmRaycast( svmipmapDevice_t* v, const ray_t& r ) {
 
         while(1) {
             // Absolute position in the mipmap level
-            abs_index =index / cur_level->mipmap_factor;
+            abs_index =index >> cur_level->mipmap_factor_log2;
             // Relative position in the block
             block_index =abs_index % cur_level->blockwidth;
             // The block is devided in subblocks: calculate the offset within the subblock
-            block_offset = glm::ivec3( block_index.x % 2 ? 1 : 0,
-                                       block_index.y % 2 ? 1 : 0,
-                                       block_index.z % 2 ? 1 : 0 );
+            block_offset = glm::ivec3( block_index.x & 0x1 ? 1 : 0,
+                                       block_index.y & 0x1 ? 1 : 0,
+                                       block_index.z & 0x1 ? 1 : 0 );
             // Calculate the index of the first block of the subblock
             subblock_index =block_index - block_offset;
             // Blocks are ordered linear on disk but as 3D texture on the GPU,
@@ -206,8 +209,8 @@ svmmRaycast( svmipmapDevice_t* v, const ray_t& r ) {
             }
 
             if( level == v->levels-1 || isTerminal( vox_raw ) ) {
-                superblock_bounds =abs_index + step;
-                superblock_bounds *= cur_level->mipmap_factor;
+            /*    superblock_bounds =abs_index + step;
+                superblock_bounds *= cur_level->mipmap_factor;*/
                 break;
             }
 
@@ -233,25 +236,24 @@ svmmRaycast( svmipmapDevice_t* v, const ray_t& r ) {
         if( frag.color.a < 0.1f ) {
             break;
         }
+        while( glm::all( glm::equal( abs_index, index >> cur_level->mipmap_factor_log2 ) ) ) {
+            glm::vec3 mask;
+    //        if( precise ) {
+                glm::bvec3 b0= glm::lessThanEqual( boxDist, glm::vec3( boxDist.y, boxDist.z, boxDist.x ) );
+                glm::bvec3 b1= glm::lessThanEqual( boxDist, glm::vec3( boxDist.z, boxDist.x, boxDist.y ) );
+                mask =glm::ivec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );
 
-        float step_factor =glm::length( glm::vec3( cur_level->mipmap_factor) );
-        float length =glm::length( glm::vec3( (float)cur_level->mipmap_factor * deltaDist ) );
-        glm::vec3 l(0);
-        while( !glm::any( glm::equal( index, superblock_bounds ) ) ) {
-        // Branchless equivalent for
-        //for( int i =0; i < 3; i++ ) 
-        //    if( boxDist[side] > boxDist[i] )
-        //        side =i;*/
-        glm::bvec3 b0= glm::lessThan( boxDist, glm::vec3( boxDist.y, boxDist.z, boxDist.x ) );
-        glm::bvec3 b1= glm::lessThanEqual( boxDist, glm::vec3( boxDist.z, boxDist.x, boxDist.y ) );
-        glm::vec3 mask =glm::ivec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );
-        side = glm::dot( box_plane, mask );
-
-        boxDist[side] += deltaDist[side];
-        l[side] += step[side];
-        index[side] += step[side];
-        frag.position_vs[side] += step[side];
+//            } else {
+  /*              glm::vec3 boxDist2 =glm::floor( boxDist );
+                glm::bvec3 b0= glm::lessThanEqual( boxDist2, glm::vec3( boxDist2.y, boxDist2.z, boxDist2.x ) );
+                glm::bvec3 b1= glm::lessThanEqual( boxDist2, glm::vec3( boxDist2.z, boxDist2.x, boxDist2.y ) );
+                mask =glm::ivec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );*/
+//            }
+            boxDist += deltaDist * mask;
+            index += step * glm::ivec3(mask);
+            frag.position_vs += step * glm::ivec3(mask);
         }
+
     }
 
     frag.color.a = 1.f - frag.color.a;
@@ -289,6 +291,7 @@ svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm ) {
         cur_level =&level[i];
         cur_level->format =lheader->format;
         cur_level->mipmap_factor =lheader->mipmap_factor;
+        cur_level->mipmap_factor_log2 =log2_p2( cur_level->mipmap_factor );
         cur_level->block_count =lheader->block_count;
 
         if( i == 0 ) { // Root level
@@ -298,20 +301,22 @@ svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm ) {
             cur_level->blockwidth =glm::max( cur_level->grid_size.x, 
                                              cur_level->grid_size.y,
                                              cur_level->grid_size.z );
+            cur_level->blockwidth_log2 =log2_p2( lheader->blockwidth ); // FIXME
         }
         else {
             cur_level->grid_size =calcGridSize( cur_level->block_count );
             cur_level->grid_y_shift =cur_level->grid_z_shift =log2_p2( cur_level->grid_size.y );
             cur_level->grid_z_shift +=cur_level->grid_y_shift;
             cur_level->blockwidth =lheader->blockwidth;
+            cur_level->blockwidth_log2 =log2_p2( lheader->blockwidth );
             cur_level->texels_per_blockwidth =
                 blockCount( cur_level->format, ivec3_32( cur_level->blockwidth ) ).x;
         }
 
-        printf( "Allocating mipmap level %d: %d blocks, grid size: %dx(%d,%d,%d) shift: %d format: %s mipmap_factor: %d texels_per_blockwidth: %d\n",
+        printf( "Allocating mipmap level %d: %d blocks, grid size: %dx(%d,%d,%d) shift: %d format: %s mipmap_factor: %d (log2: %d) texels_per_blockwidth: %d\n",
                 i, cur_level->block_count, cur_level->blockwidth, 
                 cur_level->grid_size.x, cur_level->grid_size.y, cur_level->grid_size.z,
-                cur_level->grid_y_shift, strVoxelFormat( cur_level->format ), cur_level->mipmap_factor,
+                cur_level->grid_y_shift, strVoxelFormat( cur_level->format ), cur_level->mipmap_factor, cur_level->mipmap_factor_log2,
                 cur_level->texels_per_blockwidth );
 
         // Create a texture for the calculated grid size and copy the data

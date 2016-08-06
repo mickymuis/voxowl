@@ -34,15 +34,15 @@ menger( voxelmap_t* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
 }
 
 MengerSponge::MengerSponge( const char *name, Object *parent ) 
-    : VolumeSVMipmap( name, parent ) {
-    //: VolumeVoxelmap( name, parent ) {
+    //: VolumeSVMipmap( name, parent ) {
+    : VolumeVoxelmap( name, parent ) {
     depth =1;
     mode =COLORS_RGBA;
     //memset( &volume, 0, sizeof( voxelmap_t ) );
     volume.data =NULL;
     //makeSponge();
-    setSVMipmap( &volume_svmm );
-    //setVoxelmap( &volume );
+    //setSVMipmap( &volume_svmm );
+    setVoxelmap( &volume );
 }
 
 MengerSponge::~MengerSponge() {
@@ -111,12 +111,13 @@ MengerSponge::makeSponge() {
 //    voxelmapFill( &volume, &white );
     menger( &volume, glm_ivec3_32(size), glm_ivec3_32(size), glm::ivec3(0) );
     
-    svmm_encode_opts_t opts;
+  /*  svmm_encode_opts_t opts;
     svmmSetOpts( &opts, &volume, 75 );
 //    opts.bitmapBaselevel =false;
 //    opts.rootwidth =64;
+//    opts.blockwidth =2;
     bzero( &volume_svmm, sizeof( svmipmap_t ) );
-    svmmEncode( &volume_svmm, &volume, opts );
+    svmmEncode( &volume_svmm, &volume, opts );*/
 
 //    svmmDecode( &volume, &volume_svmm );
     

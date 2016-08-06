@@ -54,15 +54,30 @@ RaycasterCUDA::setCudaErrorStr(cudaError_t code, const char *file, int line )
     return false;
 }
 
+VOXOWL_DEVICE
+static inline int fragIndex( const int &x, const int &y, const int &z, const int &dimX, const int &dimY ) {
+    return z * dimX * dimY + y* dimX + x;
+}
+
 
 /* Parallel raycast kernel. Computes one fragment depending on position in the threadblock and writes in to the framebuffer */
 VOXOWL_CUDA_KERNEL
 void
-computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferDevice_t framebuffer, ssaoInfo_t ssao_info, glm::mat4 mat_projection ) {
+computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferDevice_t framebuffer, ssaoInfo_t ssao_info ) {
+    extern __shared__ fragment_t frags[];
+
     // Calculate screen coordinates
     const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    
+    const unsigned int z = blockIdx.z * blockDim.z + threadIdx.z;
+    const unsigned int aa_x =x % framebuffer.aaXSamples;
+    const unsigned int aa_y =y % framebuffer.aaYSamples;
+
+/*    printf( "(%d %d %d) aa (%d %d) frag index %d\n", x,y,z, aa_x,aa_y,
+        fragIndex( aa_x, aa_y, z, framebuffer.aaXSamples, framebuffer.aaYSamples ) );*/
+
+    fragment_t* f =&frags[fragIndex( threadIdx.x, threadIdx.y, z, blockDim.x, blockDim.y )];
+
     // Next, we calculate the ray vector based on the screen coordinates
     glm::vec3 leftNormal = raycast_info.upperLeftNormal;
     glm::vec3 rightNormal = raycast_info.upperRightNormal;
@@ -76,61 +91,40 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
     glm::vec3 normalXDelta = (rightNormal - leftNormal) * raycast_info.invWidth;
     r.direction +=normalXDelta * (float)x;
 
-    // Initialize variables used during sampling
-    const float inv_aa_samples =1.f / (float)(framebuffer.aaXSamples * framebuffer.aaYSamples);
-    fragment_t frag;
-    frag.color =glm::vec4(0);
-    frag.position =glm::vec3(0);
-    frag.position_vs =glm::vec3(0);
-    frag.normal =glm::vec3(0);
+    glm::vec3 raydir = r.direction + normalXDelta + raycast_info.leftNormalYDelta;
 
-    for( int i =0; i < framebuffer.aaXSamples; i++ )
-        for( int j =0; j < framebuffer.aaYSamples; j++ ) {
+    // Transform the ray from world-space to unit-cube-space
+    ray_t r_cube;
+    r_cube.direction =glm::normalize( glm::mat3( raycast_info.matInvModelView ) * raydir );
+    r_cube.origin =r.origin;
 
-            // Shift the ray direction depending on the AA sample
-            glm::vec3 raydir = r.direction 
-                + (float)i /*/ ( 1 * framebuffer.aaXSamples)*/ * normalXDelta
-                + (float)j /*/ ( 1 * framebuffer.aaYSamples)*/ * raycast_info.leftNormalYDelta;
-    
-            // Transform the ray from world-space to unit-cube-space
-            ray_t r_cube;
-            r_cube.direction =glm::normalize( glm::mat3( raycast_info.matInvModelView ) * raydir );
-            r_cube.origin =r.origin;
+
+
             
             // Cast the ray and average it with the other samples
-            fragment_t f;
             switch( volume.mode ) {
                 case VOXELMAP:
-                    f = voxelmapRaycast( &volume.volume.voxelmap, r_cube );
+                    *f = voxelmapRaycast( &volume.volume.voxelmap, r_cube );
                     break;
                 case SVMM:
-                    f = svmmRaycast( &volume.volume.svmm, r_cube );
+                    *f = svmmRaycast( &volume.volume.svmm, r_cube );
                     break;
                 default:
                     break;
             }
-            frag.color += f.color;
-            frag.position += f.position;
-            frag.position_vs +=f.position_vs;
-            frag.normal +=  f.normal;
 
-        }
+    //    }
 
-    // Average out
-    frag.color *=inv_aa_samples;
-    frag.position *=inv_aa_samples;
-    frag.position_vs *=inv_aa_samples;
-    frag.normal *=inv_aa_samples;
 
     // VSAO, only when using voxelmaps (for now )
-    if( volume.mode == VOXELMAP ) {
+    if( false && volume.mode == VOXELMAP ) {
         float4 noise =tex1D( ssao_noise, (float)x*y );
         glm::vec3 rvec( noise.x, noise.y, noise.z );
 
         // Setup the TBN matrix
-        glm::vec3 tangent = glm::normalize(rvec - frag.normal * glm::dot(rvec, frag.normal));
-        glm::vec3 bitangent = glm::cross(frag.normal, tangent);
-        glm::mat3 tbn(tangent, bitangent, frag.normal);
+        glm::vec3 tangent = glm::normalize(rvec - f->normal * glm::dot(rvec, f->normal));
+        glm::vec3 bitangent = glm::cross(f->normal, tangent);
+        glm::mat3 tbn(tangent, bitangent, f->normal);
 
         // Obtain the samples
         float occlusion =0.f;
@@ -140,7 +134,7 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
             float4 k =tex1D( ssao_kernel, i );
             glm::vec3 kernel_i( k.x, k.y, k.z );
             glm::vec3 sample = tbn * kernel_i;
-            sample = sample * ssao_info.radius + frag.position_vs + frag.normal;
+            sample = sample * ssao_info.radius + f->position_vs + f->normal;
             
             glm::vec4 vox =voxelTex3D_clamp( 
                     volume.volume.voxelmap.texture, 
@@ -151,20 +145,39 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
         }
 
         
-        frag.color *= (1.f - occlusion / ssao_info.kernelSize );
+        f->color *= (1.f - occlusion / ssao_info.kernelSize );
     }
 
     // Gamma step
     
-    frag.color =glm::pow( frag.color, glm::vec4( 1.f / 2.2f ) );
+    f->color =glm::pow( f->color, glm::vec4( 1.f / 2.2f ) );
 
 
     // Convert both the position and the normal to view-space
     // We export (some of) these values for use in later passes
-    frag.position = glm::vec3( glm::mat3(raycast_info.matModelView) * ( frag.position - r.origin ) );
-    frag.normal = glm::normalize( glm::mat3( raycast_info.matModelView ) * frag.normal );
-    float depth =frag.position.z;
+    f->position = glm::vec3( glm::mat3(raycast_info.matModelView) * ( f->position - r.origin ) );
+    f->normal = glm::normalize( glm::mat3( raycast_info.matModelView ) * f->normal );
+    float depth =f->position.z;
 
+    __syncthreads();
+
+    if( aa_x || aa_y || z )
+        return;
+
+    const float inv_samples =1.f / (float)(framebuffer.aaXSamples * framebuffer.aaYSamples);
+    const int screen_x =x / framebuffer.aaXSamples;
+    const int screen_y =y / framebuffer.aaYSamples;
+
+    fragment_t frag;
+    frag.position =f->position;
+    frag.position_vs =f->position_vs;
+    frag.normal =f->normal;
+    frag.color =glm::vec4(0);
+
+    for( int i =0; i < framebuffer.aaXSamples; i++ )
+        for( int j =0; j < framebuffer.aaYSamples; j++ ) {
+            frag.color +=frags[fragIndex(threadIdx.x + i, threadIdx.y + j,0, blockDim.x, blockDim.y)].color * inv_samples;
+        }
     
     // Write the color information to the framebuffer
     uint32_t rgba;
@@ -172,9 +185,9 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
     packRGBA_UINT32( &rgba, frag.color  );
 
     // Workaround to be able to write to a 24bit buffer. Saves conversion later
-    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 24) & 0xFF), fb_color_surface, x*3, y, cudaBoundaryModeTrap );
-    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 16) & 0xFF), fb_color_surface, x*3+1, y, cudaBoundaryModeTrap );
-    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 8) & 0xFF), fb_color_surface, x*3+2, y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 24) & 0xFF), fb_color_surface, screen_x*3, screen_y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 16) & 0xFF), fb_color_surface, screen_x*3+1, screen_y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 8) & 0xFF), fb_color_surface, screen_x*3+2, screen_y, cudaBoundaryModeTrap );
 
 
     // Write the normal and depth values using a regular 32 float4 texture
@@ -184,7 +197,7 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
     normal_depth.y =frag.normal.y;
     normal_depth.z =frag.normal.z;
 
-    surf2Dwrite<float4>( normal_depth, fb_normal_depth_surface, x * sizeof( float4 ), y, cudaBoundaryModeTrap ); 
+    surf2Dwrite<float4>( normal_depth, fb_normal_depth_surface, screen_x * sizeof( float4 ), screen_y, cudaBoundaryModeTrap ); 
 
 }
 
@@ -217,7 +230,7 @@ computeFragmentSSAO( raycastInfo_t raycast_info, ssaoInfo_t ssao_info, framebuff
     origin +=normalXDelta * (float)x;
 
     // We extend the calculated ray vector along the z axis by the fragment's depth
-    origin =origin / -origin.z * normal_depth.w;
+    origin =origin / origin.z * normal_depth.w;
 
 
     // Obtain a random number to rotate the sampple matrix
@@ -229,17 +242,22 @@ computeFragmentSSAO( raycastInfo_t raycast_info, ssaoInfo_t ssao_info, framebuff
     glm::vec3 bitangent = glm::cross(normal, tangent);
     glm::mat3 tbn(tangent, bitangent, normal);
 
-    // Obtain the samples
+    /*    if( r > 1 ) {
+            printf( "origin %f %f %f screenpos %d %d normal %f %f %f\n",  origin.x, origin.y, origin.z, x, y, normal.x, normal.y, normal.z );
+        }*/
+    
+        // Obtain the samples
     for (int i = 0; i < ssao_info.kernelSize; ++i) {
         // get sample position:
 
         float4 k =tex1D( ssao_kernel, i );
+        
         glm::vec3 kernel_i( k.x, k.y, k.z );
-        glm::vec3 sample = tbn * kernel_i;
-        sample = sample * ssao_info.radius + origin;
+        glm::vec3 sample_i = tbn * kernel_i;
+        glm::vec3 sample = sample_i * ssao_info.radius + origin;
 
         // project sample position:
-        glm::vec4 offset = mat_projection * glm::vec4( origin, 1.f );
+        glm::vec4 offset = mat_projection * glm::vec4( sample, 1.f );
         glm::vec2 screenpos = glm::vec2( offset ) / offset.w ;
         screenpos.y =-screenpos.y;
         screenpos = screenpos * 0.5f + glm::vec2(0.5f);
@@ -253,16 +271,16 @@ computeFragmentSSAO( raycastInfo_t raycast_info, ssaoInfo_t ssao_info, framebuff
         float sampleDepth = normal_depth.w;
 
         // range check & accumulate:
-        float rangeCheck= glm::abs(origin.z - sampleDepth) < ssao_info.radius ? 1.0 : 0.0;
+        float rangeCheck= (glm::abs(origin.z - sampleDepth) < ssao_info.radius) ? 1.0 : 0.0;
         occlusion += (sampleDepth >= sample.z ? 1.0 : 0.0) * rangeCheck;
 
- //       if( r > 1 ) {
- //           printf( "sample depth %f sample %f %f %f origin %f %f %f screenpos %f %f normal %f %f %f\n", sampleDepth, sample.x, sample.y, sample.z, origin.x, origin.y, origin.z, screenpos.x, screenpos.y, normal.x, normal.y, normal.z );
-    //    }
+/*       if( x == 767 && y == 753 ) {
+       printf( "frag: %d %d sample depth %f sample %f %f %f origin %f %f %f screenpos %f %f kernel %f %f %f\n", x,y, sampleDepth, sample.x, sample.y, sample.z, origin.x, origin.y, origin.z, screenpos.x, screenpos.y, sample_i.x, sample_i.y, sample_i.z );
+       } */
     }
 
     // Apply the result
-    occlusion = 1.f;// - occlusion / ssao_info.kernelSize;
+    occlusion = 1.f - occlusion / ssao_info.kernelSize;
 
 
     glm::vec3 color( r, g, b );
@@ -281,6 +299,9 @@ RaycasterCUDA::RaycasterCUDA( const char* name, Object* parent )
     if (!initSSAO() ) {
         fprintf( stderr, "initSSAO(): %s\n", errorString().c_str() ); 
     }
+    cudaEventCreate( &render_begin );
+    cudaEventCreate( &render_finish );
+    cudaEventCreate( &ssao_step );
 }
 
 RaycasterCUDA::~RaycasterCUDA() {
@@ -290,6 +311,9 @@ RaycasterCUDA::~RaycasterCUDA() {
     if( d_framebuffer.normal_depth_data )
         cudaFreeArray( d_framebuffer.normal_depth_data );
     freeVolumeMem();
+    cudaEventDestroy( render_begin );
+    cudaEventDestroy( render_finish );
+    cudaEventDestroy( ssao_step );
 }
 
 bool
@@ -379,6 +403,7 @@ RaycasterCUDA::initFramebuffer() {
 bool 
 RaycasterCUDA::beginRender() {
 
+    
     if( !getFramebuffer() )
         return setError( true, "No framebuffer set" );
     if( !getVolume() )
@@ -388,7 +413,8 @@ RaycasterCUDA::beginRender() {
 
     const int width =getFramebuffer()->getWidth();
     const int height =getFramebuffer()->getHeight();
-    const dim3 blocksize(16, 16);
+    const int ray_segments =1;
+    const dim3 blocksize(16, 16, ray_segments);
 
     // Reallocate and upload the volume
     if( last_config_volume != getVolume()->getConfiguration() ) {
@@ -451,20 +477,41 @@ RaycasterCUDA::beginRender() {
     // TODO: some kind of caching?
     raycastInfo_t raycast_info;
     getCamera()->setAspect( (float)width/(float)height );
-    raycastSetMatrices( &raycast_info, getVolume()->modelMatrix(), getCamera()->getViewMatrix(), getCamera()->getProjMatrix(), width, height );
+    raycastSetMatrices( &raycast_info, 
+                        getVolume()->modelMatrix(), 
+                        getCamera()->getViewMatrix(), 
+                        getCamera()->getProjMatrix(), 
+                        width * d_framebuffer.aaXSamples, 
+                        height* d_framebuffer.aaYSamples );
 
     // Divide the invidual fragments over N / blocksize blocks
     // Run the raycast kernel on the device
-    const dim3 numblocks( width / blocksize.x, height / blocksize.y );
+    const dim3 numblocks( (width * d_framebuffer.aaXSamples) / blocksize.x, 
+                          (height * d_framebuffer.aaYSamples) / blocksize.y, 
+                          1 );
+    size_t sm_bytes =blocksize.x * blocksize.y * blocksize.z * sizeof( fragment_t );
     RETURN_IF_ERR( cudaBindSurfaceToArray( fb_color_surface, d_framebuffer.color_data ) );
     RETURN_IF_ERR( cudaBindSurfaceToArray( fb_normal_depth_surface, d_framebuffer.normal_depth_data ) );
-    computeFragment<<<numblocks, blocksize>>>( raycast_info, d_volume, d_framebuffer, ssao_info, getCamera()->getProjMatrix() );
+//    cudaFuncSetCacheConfig( computeFragment, cudaFuncCachePreferL1 );
+    cudaEventRecord( render_begin );
+    computeFragment<<<numblocks, blocksize, sm_bytes>>>( raycast_info, d_volume, d_framebuffer, ssao_info/*, getCamera()->getProjMatrix()*/ );
     RETURN_IF_ERR( cudaGetLastError() );
 
     // Experimental SSAO step
+    dim3 blocksize_ssao( 16, 16 );
+    dim3 numblocks_ssao( width / blocksize_ssao.x, height / blocksize_ssao.y );
+    raycastSetMatrices( &raycast_info, 
+                        getVolume()->modelMatrix(), 
+                        getCamera()->getViewMatrix(), 
+                        getCamera()->getProjMatrix(), 
+                        width, 
+                        height );
+    cudaEventRecord( ssao_step );
+    //ssao_info.radius-=0.1f;
     RETURN_IF_ERR( cudaDeviceSynchronize() );
-    computeFragmentSSAO<<<numblocks, blocksize>>>( raycast_info, ssao_info, d_framebuffer, getCamera()->getProjMatrix() );
+    computeFragmentSSAO<<<numblocks_ssao, blocksize_ssao>>>( raycast_info, ssao_info, d_framebuffer, getCamera()->getProjMatrix() );
     RETURN_IF_ERR( cudaGetLastError() );
+    cudaEventRecord( render_finish );
 
     return true;
 }
@@ -472,7 +519,7 @@ RaycasterCUDA::beginRender() {
 bool 
 RaycasterCUDA::synchronize() {
     // Wait for the running kernel to finish
-    RETURN_IF_ERR( cudaDeviceSynchronize() );
+    //RETURN_IF_ERR( cudaDeviceSynchronize() );
 
     // Copy the framebuffer to the host
 
@@ -485,6 +532,10 @@ RaycasterCUDA::synchronize() {
 
     RETURN_IF_ERR ( cudaMemcpyFromArray( data_ptr, d_framebuffer.color_data, 0, 0, width*height*bpp, cudaMemcpyDeviceToHost ) );
     
+    cudaEventSynchronize( render_finish );
+    float ms =0;
+    cudaEventElapsedTime( &ms, render_begin, render_finish );
+    printf( "Frame rendered in %f ms (%f fps)\n", ms, (1/ms)*1000.f );
 
     return true;
 }
@@ -518,11 +569,11 @@ RaycasterCUDA::freeFramebufferMem() {
 VOXOWL_HOST
 bool
 RaycasterCUDA::initSSAO() {
-    static const int KERNEL_SIZE =512;
-    static const int NOISE_SIZE =64;
-    //static const float RADIUS =1.f;
+    static const int KERNEL_SIZE =64;
+    static const int NOISE_SIZE =16;
+    static const float RADIUS =.4f;
     // for VSAO
-    static const float RADIUS =20.0f;
+    //static const float RADIUS =20.0f;
 
     ssao_info.kernelSize =KERNEL_SIZE;
     ssao_info.noiseSize =NOISE_SIZE;
@@ -534,16 +585,16 @@ RaycasterCUDA::initSSAO() {
 
     for (int i = 0; i < ssao_info.kernelSize; ++i) {
         float scale = (float)i / (float)ssao_info.kernelSize;
-        //scale = glm::mix(0.1f, 1.0f, scale * scale);
+        scale = glm::mix(0.1f, 1.0f, scale * scale);
         // for VSAO
-        scale = glm::mix(0.5f, 1.0f, scale * scale);
+        //scale = glm::mix(0.5f, 1.0f, scale * scale);
         
         kernel[i] = glm::normalize( glm::vec4 (
             random(-1.0f, 1.0f),
             random(-1.0f, 1.0f),
-            random(0.0f, 1.0f),
+            random(0.f, 1.0f),
             0.f ) );
-//        kernel[i] *= random(0.1f, 1.0f);
+        kernel[i] *= random(0.1f, 1.0f);
         kernel[i] *= scale;
 //        kernel[i].z += 1.f;
     }

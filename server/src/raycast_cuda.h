@@ -66,4 +66,9 @@ class RaycasterCUDA : public Renderer {
         VOXOWL_HOST bool initSSAO();
         ssaoInfo_t ssao_info;
 
+        // Events for performance counting
+        cudaEvent_t render_begin;
+        cudaEvent_t render_finish;
+        cudaEvent_t ssao_step;
+
 };

@@ -6,8 +6,10 @@
 typedef struct {
     voxel_format_t      format;
     int                 mipmap_factor;
+    int                 mipmap_factor_log2;
     int                 block_count;
     int                 blockwidth;
+    int                 blockwidth_log2; 
     int                 texels_per_blockwidth;
     glm::ivec3          grid_size;
     int                 grid_y_shift;
