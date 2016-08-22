@@ -51,6 +51,9 @@ class Framebuffer : public Object {
         int getAAXSamples() const { return aa_xsamples; }
         int getAAYSamples() const { return aa_ysamples; }
 
+        void setClearColor( glm::vec4 c ) { clear_color =c; }
+        glm::vec4 getClearColor() const { return clear_color; }
+
         uint32_t getFrameSize() const { return frame_size; }
         std::string errorString() const { return err_str; }
 
@@ -73,6 +76,7 @@ class Framebuffer : public Object {
         int mode;
         int target;
         int aa_xsamples, aa_ysamples;
+        glm::vec4 clear_color;
         std::string err_str;
 
         bool setError( bool, const std::string& );

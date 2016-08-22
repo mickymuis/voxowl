@@ -14,7 +14,8 @@ typedef enum {
 } storage_mode_t;
 
 struct volumeDevice_t {
-    glm::mat4 matModel;
+    box_t bounding_box;
+    float voxel_width;
     union __volume {
         __volume(){}
         voxelmapDevice_t voxelmap;
@@ -25,12 +26,17 @@ struct volumeDevice_t {
 
 typedef struct {
     int width, height;
-    cudaArray *color_data;
-    cudaArray *normal_depth_data;
-    int aaXSamples, aaYSamples;
+    short int aaXSamples, aaYSamples;
     voxowl_pixel_format_t format;
+    cudaTextureObject_t normal_depth_sampler;
+    glm::vec4 clear_color;
 } framebufferDevice_t;
 
+typedef struct {
+    cudaArray *color_data;
+    cudaArray *normal_depth_data;
+    framebufferDevice_t fb_d;
+} framebuffer_t;
 
 typedef struct {
     int kernelSize;
@@ -61,7 +67,7 @@ class RaycasterCUDA : public Renderer {
         volumeDevice_t d_volume;
         config_t last_config_volume;
 
-        framebufferDevice_t d_framebuffer;
+        framebuffer_t framebuffer;
 
         VOXOWL_HOST bool initSSAO();
         ssaoInfo_t ssao_info;
@@ -70,5 +76,8 @@ class RaycasterCUDA : public Renderer {
         cudaEvent_t render_begin;
         cudaEvent_t render_finish;
         cudaEvent_t ssao_step;
+        cudaEvent_t ssna_step;
+        cudaEvent_t aa_step;
+        cudaEvent_t lighting_step;
 
 };

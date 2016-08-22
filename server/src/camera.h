@@ -1,10 +1,10 @@
 #pragma once
 
-#include "object.h"
+#include "actor.h"
 #include "glm/mat4x4.hpp"
 #include "glm/vec3.hpp"
 
-class Camera : public Object {
+class Camera : public Actor {
     public:
         Camera( const char* name, Object *parent =0 );
         ~Camera();
@@ -32,7 +32,7 @@ class Camera : public Object {
         
         glm::vec3 getViewDirection() const { return target-position; }
 
-        glm::mat4 getViewMatrix() const;
+        glm::mat4 getViewMatrix();
         glm::mat4 getProjMatrix() const;
 
         virtual Variant callMeta( const std::string& method, const Variant::list& args );

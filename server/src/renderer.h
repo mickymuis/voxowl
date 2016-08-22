@@ -9,6 +9,12 @@ class Volume;
 
 class Renderer : public Object {
     public:
+        typedef enum {
+            FEATURE_AA =0x1,
+            FEATURE_SSAO =0x2,
+            FEATURE_SSNA =0x4,
+            FEATURE_LIGHTING =0x8
+        } Feature;
         Renderer( const char *name, Object *parent =0 );
         ~Renderer();
 
@@ -20,6 +26,11 @@ class Renderer : public Object {
 
         void setVolume( Volume* );
         Volume* getVolume() const;
+
+        void setFeature( Feature, bool );
+        void enable( Feature );
+        void disable( Feature );
+        bool isEnabled( Feature ) const;
 
         bool render();
 
@@ -38,6 +49,5 @@ class Renderer : public Object {
         Camera *camera;
         Framebuffer *fb;
         Volume *vol;
-
-
+        int features;
 };

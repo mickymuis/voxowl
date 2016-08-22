@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 set( LOCAL_BUILD "~/local" )
 set( NV_COMPUTE "52" )
+set( NV_SM "35" )
 
 find_package(CUDA REQUIRED)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb")
@@ -9,8 +10,8 @@ find_package(CUDA REQUIRED)
 set(
     CUDA_NVCC_FLAGS
     ${CUDA_NVCC_FLAGS};
-    -g -rdc=true -O3 -std=c++11 -gencode arch=compute_${NV_COMPUTE},code=sm_${NV_COMPUTE}
-    )
+    -g -rdc=true -O3 -std=c++11 --maxrregcount 32 --use_fast_math -lineinfo -gencode arch=compute_${NV_COMPUTE},code=compute_${NV_COMPUTE}
+)
 
 set( CUDA_SEPARABLE_COMPILATION ON )
 set( CUDA_PROPAGATE_HOST_FLAGS OFF )
@@ -29,6 +30,15 @@ find_package_handle_standard_args(TJPEG DEFAULT_MSG TJPEG_LIBRARY TJPEG_INCLUDE_
 if(TJPEG_FOUND)
         set(TJPEG_LIBRARIES ${TJPEG_LIBRARY})
         add_definitions(-DHAS_TURBOJPEG)
+endif()
+
+include (FindOpenMP)  
+if (OPENMP_FOUND)
+  set (HAVE_OPENMP TRUE)
+  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+else()
+  set ( HAVE_OPENMP FALSE)
 endif()
 
 # Specify include directories
@@ -51,11 +61,12 @@ cuda_add_executable(
     src/parser.cpp
     src/framebuffer.cpp
     src/renderer.cpp
-    src/volume.cpp
+    src/volume_loader.cpp
     src/camera.cpp
     src/actor.cpp
     src/mengersponge.cpp
     src/bmp.cpp
+    src/performance_counter.cpp
     src/raycast.cu
     src/raycast_cuda.cu
     src/dda_cuda.cu

@@ -9,9 +9,14 @@ Renderer::Renderer( const char *name, Object *parent )
     fb =NULL;
     vol =NULL;
     camera =NULL;
+    features =NULL;
     addProperty( "camera" );
     addProperty( "framebuffer" );
     addProperty( "volume" );
+    addProperty( "featureAA" );
+    addProperty( "featureSSAO" );
+    addProperty( "featureSSNA" );
+    addProperty( "featureLighting" );
     addMethod( "render" );
 }
 
@@ -19,14 +24,43 @@ Renderer::~Renderer() {
 
 }
 
-void Renderer::setCamera( Camera* c ) { camera =c; }
-Camera *Renderer::getCamera() const { return camera; }
+void 
+Renderer::setCamera( Camera* c ) { camera =c; }
+Camera*
+Renderer::getCamera() const { return camera; }
 
-void Renderer::setFramebuffer( Framebuffer* f ) { fb =f; }
-Framebuffer* Renderer::getFramebuffer() const { return fb; }
+void 
+Renderer::setFramebuffer( Framebuffer* f ) { fb =f; }
+Framebuffer* 
+Renderer::getFramebuffer() const { return fb; }
 
-void Renderer::setVolume( Volume* v ) { vol =v; }
-Volume* Renderer::getVolume() const { return vol; }
+void
+Renderer::setVolume( Volume* v ) { vol =v; }
+Volume* 
+Renderer::getVolume() const { return vol; }
+
+void
+Renderer::setFeature( Feature f, bool b ) {
+    if( b )
+        enable( f );
+    else
+        disable( f );
+}
+
+void 
+Renderer::enable( Feature f ) {
+    features |= (int)f;
+}
+
+void 
+Renderer::disable( Feature f ) {
+    features &= ~(int)f;
+}
+
+bool 
+Renderer::isEnabled( Feature f ) const {
+    return (features & (int)f);
+}
 
 bool 
 Renderer::render() {
@@ -85,6 +119,18 @@ Renderer::setMeta( const std::string& property, const Variant& value ) {
                 setVolume( 0 );
         } catch( std::bad_typeid& e ) { setVolume( 0 ); }
         return false;
+    } else if( property == "featureAA" ) {
+        setFeature( FEATURE_AA, value.toBool() );
+        return true;
+    } else if( property == "featureSSAO" ) {
+        setFeature( FEATURE_SSAO, value.toBool() );
+        return true;
+    } else if( property == "featureSSNA" ) {
+        setFeature( FEATURE_SSNA, value.toBool() );
+        return true;
+    } else if( property == "featureLighting" ) {
+        setFeature( FEATURE_LIGHTING, value.toBool() );
+        return true;
     }
 
     return Object::setMeta( property, value );
@@ -98,6 +144,14 @@ Renderer::getMeta( const std::string& property ) const {
         return getCamera();
     else if( property == "volume" )
         return getVolume();
+    else if( property == "featureAA" )
+        return isEnabled( FEATURE_AA );
+    else if( property == "featureSSAO" )
+        return isEnabled( FEATURE_SSAO );
+    else if( property == "featureSSNA" )
+        return isEnabled( FEATURE_SSNA );
+    else if( property == "featureLighting" )
+        return isEnabled( FEATURE_LIGHTING );
     return Object::getMeta( property );
 }
 

@@ -13,7 +13,7 @@
 #define SVMM_SUBBLOCK_WIDTH 2
 
 typedef struct {
-    uint32_t next;
+    uint64_t next;
     uint32_t mipmap_factor;
     uint32_t block_count;
     voxel_format_t format;

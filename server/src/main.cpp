@@ -16,6 +16,8 @@
 #include "camera.h"
 #include "raycast_cuda.h"
 #include "mengersponge.h"
+#include "volume_loader.h"
+#include "performance_counter.h"
 
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)  \
@@ -141,13 +143,21 @@ main( int argc, char** argv ) {
     fb.setTarget( Framebuffer::TARGET_REMOTE );
     fb.setMode( Framebuffer::MODE_JPEG );
     fb.setPixelFormat( Framebuffer::PF_RGB888 );
-    fb.setAASamples( 2, 2 );
+    fb.setAASamples( 1, 1 );
+    fb.setClearColor( glm::vec4( .85f, .84f, .75f, 1.f ) );
     fb.reinitialize();
 
     Camera camera( "camera", &root );
     
     MengerSponge sponge( "mengersponge", &root );
     sponge.setDepth( 5 );
+
+    /*VolumeLoader loader( "volumeloader", &root );
+    if( argc > 1 ) {
+        std::string path( argv[1] );
+        if( !loader.open( path ) )
+            std::cerr << loader.errorString() << std::endl;
+    }*/
 
     RaycasterCUDA renderer( "renderer", &root );
     renderer.setFramebuffer( &fb );
@@ -177,6 +187,9 @@ main( int argc, char** argv ) {
     /* Wait for any threads to join */
     pbuffer.stopThread();
     pbuffer_thread.join();
+
+    PerformanceCounter::printAll( std::cout );
+    PerformanceCounter::cleanup();
 
     return 0;
 }

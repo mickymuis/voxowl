@@ -19,5 +19,5 @@ VOXOWL_DEVICE glm::vec4 voxelTex3D_clamp(
         glm::ivec3 clamp_size );
 
 /* Cast one ray r into the volume bounded by v. The actual volume data is obtained from the volume texture */
-VOXOWL_DEVICE fragment_t voxelmapRaycast( voxelmapDevice_t *v, const ray_t& r ); 
+VOXOWL_DEVICE void voxelmapRaycast( fragment_t&, voxelmapDevice_t *v, box_t&, ray_t&, glm::vec3 &rayBegin /*, glm::vec3 &rayEnd*/  ); 
 

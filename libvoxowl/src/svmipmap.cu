@@ -20,13 +20,13 @@ encodeBlock( voxelmap_t *dst,
              voxelmap_t *src, 
              ivec3_32_t offset, 
              ivec3_32_t size, 
-             bool *homogenous, 
+             bool *homogeneous, 
              bool base_level, 
              svmm_encode_opts_t *opts ) {
     int count =0;
     glm::vec4 list[size.x*size.y*size.z];
     glm::dvec4 sum;
-    if( homogenous ) *homogenous =true;
+    if( homogeneous ) *homogeneous =true;
     bool convert =src->format != dst->format;
 
 
@@ -45,10 +45,10 @@ encodeBlock( voxelmap_t *dst,
                     uint32_t rgb24a1 = *(uint32_t*)voxel( src, ivec3_32( x, y, z ) );
                     *(uint32_t*)voxel( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ) )
                         = rgb24a1;
-                    // A block can only be homogenous if all its voxels are
+                    // A block can only be homogeneous if all its voxels are
                     // terminal (except for the baselevel)
                     if( !base_level )
-                        *homogenous = *homogenous && isTerminal( rgb24a1 );
+                        *homogeneous = *homogeneous && isTerminal( rgb24a1 );
                 }
 
             }
@@ -57,20 +57,20 @@ encodeBlock( voxelmap_t *dst,
     glm::vec4 avg =glm::vec4( sum / (double)count );
    
     for( int i =0; i < count; i++ ) {
-         // A block is homogenous if all its voxels differ no more
+         // A block is homogeneous if all its voxels differ no more
          // than delta from the average
-         if( homogenous && *homogenous )
-            *homogenous =*homogenous && 
+         if( homogeneous && *homogeneous )
+            *homogeneous =*homogeneous && 
                 glm::all( glm::lessThanEqual ( glm::abs( list[i] - avg), glm::vec4( opts->delta ) ) );
 
     }/*for( int z =offset.z; z < size.z + offset.z && z < src->size.z; z++ )
         for( int y =offset.y; y < size.y + offset.y && y < src->size.y; y++ )
             for( int x =offset.x; x < size.x + offset.x && x < src->size.x; x++ ) {
                  glm::vec4 rgba =voxelmapUnpack( src, ivec3_32( x, y, z ) );
-                 // A block is homogenous if all its voxels differ no more
+                 // A block is homogeneous if all its voxels differ no more
                  // than delta from the average
-                 if( homogenous && *homogenous && count )
-                    *homogenous =*homogenous && glm::all( glm::lessThanEqual ( glm::abs( rgba - avg), glm::vec4( opts->delta ) ) );
+                 if( homogeneous && *homogeneous && count )
+                    *homogeneous =*homogeneous && glm::all( glm::lessThanEqual ( glm::abs( rgba - avg), glm::vec4( opts->delta ) ) );
             }*/
     
     // Currently, only 1-bit alpha is supported because we need the other 
@@ -79,7 +79,7 @@ encodeBlock( voxelmap_t *dst,
     packRGB24A1_UINT32( &rgba, avg );
 
     // The 6th bit is used to set the terminal condition (leaf node)
-    setTerminal( &rgba, *homogenous );
+    setTerminal( &rgba, *homogeneous );
     return rgba;
 }
 
@@ -136,7 +136,7 @@ encodeLevel( svmipmap_t * m,
                             block.data =m->data_ptr + *data_offset;
                             //memset( block.data, 0xff, bytes_per_block ); // DEBUG
                             
-                            bool homogenous;
+                            bool homogeneous;
                             // Calculate the offset into the source voxelmap
                             ivec3_32_t offset =ivec3_32( (2 * x + i) * blockwidth, 
                                                          (2 * y + j) * blockwidth, 
@@ -149,7 +149,7 @@ encodeLevel( svmipmap_t * m,
                                                        v, 
                                                        offset, 
                                                        block_size, 
-                                                       &homogenous,
+                                                       &homogeneous,
                                                        base_level, 
                                                        &opts );
 
@@ -165,9 +165,9 @@ encodeLevel( svmipmap_t * m,
                             // Write the average to the parent level temporary
                             *(uint32_t*)voxel( parent, ivec3_32( 2*x+i, 2*y+j, 2*z+k ) ) =avg;
 
-                            // If the calculated block is NOT homogenous, we actually need
-                            // to store it. A homogenous block contains only the same values
-                            if( !homogenous ) {
+                            // If the calculated block is NOT homogeneous, we actually need
+                            // to store it. A homogeneous block contains only the same values
+                            if( !homogeneous ) {
                                 // By incrementing the data offset, we don't overwrite the
                                 // block
                                 *data_offset +=bytes_per_block;
@@ -264,7 +264,7 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
         noffset =data_offset - level_begin;
         //fprintf( stderr, "noffset: %d, data offset: %d\n", noffset, level_begin );
 
-        fprintf( stdout, "level #%d: datasize: %d format: %d non-homogenous blocks %d (%d%) parent mipmap level size: %d x %d x %d\n",
+        fprintf( stdout, "level #%d: datasize: %zu format: %d non-homogeneous blocks %d (%d%) parent mipmap level size: %d x %d x %d\n",
             levels-1, noffset, lheader->format, 
             block_count, (int)((float)block_count / (float)(parent->size.x*parent->size.y*parent->size.z) * 100),
             parent->size.x, parent->size.y, parent->size.z );
@@ -491,7 +491,7 @@ getBlockOffset( voxelmap_t *block, ivec3_32_t subblock_index, ivec3_32_t block_o
     // this subblock. Now skip another 'block_idx' blocks to reach the exact
     // block we're looking for
 
-    offset +=skip;
+    offset +=(uint64_t)skip;
     offset *=blocksize;
     return offset;
 }
@@ -642,7 +642,7 @@ VOXOWL_HOST
 int 
 ensureSize( svmipmap_t *m, size_t new_size ) {
     if( m->data_size < new_size ) {
-        new_size +=DATA_RESIZE;
+        new_size +=(size_t)DATA_RESIZE;
 
         if( !m->is_mmapped )
             m->data_ptr =(char*)realloc( m->data_ptr, new_size );
