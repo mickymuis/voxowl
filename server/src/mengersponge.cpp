@@ -25,9 +25,9 @@ menger( voxelmap_t* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
                     for( size_t i = offs.x; i < offs.x + step; i++ )
                         for( size_t j = offs.y; j < offs.y + step; j++ )
                             for( size_t k = offs.z; k < offs.z + step; k++ ) {
-                                glm::vec4 color =voxelmapUnpack( V, ivec3_32(i,j,k ) );
-                                color.a =0.f;
-                                voxelmapPack(  V, ivec3_32( i, j, k ), color );
+                                //glm::vec4 color =voxelmapUnpack( V, ivec3_32(i,j,k ) );
+                                //color.a =0.f;
+                                voxelmapPack(  V, ivec3_32( i, j, k ), glm::vec4(0) );
                                 //((uint32_t*)V->data)[size.x * size.y * k + size.x * j + i] &= ~(uint32_t)0xff;
                             }
                 }
@@ -98,8 +98,12 @@ MengerSponge::makeSponge() {
         return;
     }
     voxelmapFromMapped( &volume, &vol_disk );*/
-    voxelmapCreate( &volume, VOXEL_DENSITY8_8ALPHA1_UINT16, s, s, s );
+    voxelmapCreate( &volume, VOXEL_DENSITY_UINT8, s, s, s );
 //
+    uint32_t black =0x0;
+//    uint8_t white =0xff;
+    voxelmapFill( &volume, &black );
+
     // FOR SPHERE
     float maxDist =glm::min(size.x, glm::min( size.y, size.z ) ) / 2;
     float minDist =(float) maxDist * 0.8;
@@ -149,13 +153,10 @@ MengerSponge::makeSponge() {
 
             }
     }
-//    uint32_t white =0xffffffff;
-//    uint8_t white =0xff;
-//    voxelmapFill( &volume, &white );
     menger( &volume, glm_ivec3_32(size), glm_ivec3_32(size), glm::ivec3(0) );
 
     
-    /*svmm_encode_opts_t opts;
+/*    svmm_encode_opts_t opts;
     svmmSetOpts( &opts, &volume, 75 );
     opts.bitmapBaselevel =false;
 //    opts.rootwidth =8;
@@ -165,6 +166,6 @@ MengerSponge::makeSponge() {
 
 //    svmmDecode( &volume, &volume_svmm );
     
-//    svmmTest( &volume, 90 );
+    svmmTest( &volume, 90 );
 //    voxelmapUnmap( &vol_disk );
 }

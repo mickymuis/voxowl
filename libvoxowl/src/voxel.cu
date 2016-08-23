@@ -88,7 +88,7 @@ bitsPerVoxel( voxel_format_t f ) {
             break;
         case VOXEL_INTENSITY8_8ALPHA1_UINT16:
         case VOXEL_DENSITY8_8ALPHA1_UINT16:
-            s =16;
+            s =2;
             break;
         default:
             s =0;
@@ -329,14 +329,14 @@ voxelmapPack( voxelmap_t* v, ivec3_32_t position, glm::vec4 rgba ) {
             packRGBA_UINT32( (uint32_t*)block_ptr, rgba );
             break;
         case VOXEL_INTENSITY_UINT8:
-            packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba ) );
+            packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba, true ) );
             break;
         case VOXEL_DENSITY_UINT8:
-            packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba ) );
+            packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba, false ) );
             break;
         case VOXEL_BITMAP_UINT8: {
             unsigned bit_offs =blockOffset( v->format, position );
-            packBIT_UINT8( (uint8_t*)block_ptr, bit_offs, thresholdRGBA_linear( rgba ) );
+            packBIT_UINT8( (uint8_t*)block_ptr, bit_offs, thresholdRGBA_linear( rgba, true ) );
             break;
         }
         case VOXEL_RGB24_8ALPHA1_UINT32: {
@@ -351,6 +351,7 @@ voxelmapPack( voxelmap_t* v, ivec3_32_t position, glm::vec4 rgba ) {
         }
         case VOXEL_DENSITY8_8ALPHA1_UINT16: {
             unsigned bit_offs =blockOffset( v->format, position );
+            rgba.a = rgba.a < .001f ? 0.f : 1.f;
             packRGBA_INTENSITY8_8ALPHA1_UINT16( (uint16_t*)block_ptr, bit_offs, rgba );
             break;
         }
@@ -361,10 +362,10 @@ voxelmapPack( voxelmap_t* v, ivec3_32_t position, glm::vec4 rgba ) {
             packRGB24A3_UINT32( (uint32_t*)block_ptr, rgba );
             break;
         case VOXEL_INTENSITY8_UINT16:
-            packINTENSITY8_UINT16( (uint16_t*)block_ptr, intensityRGBA_linear( rgba ) );
+            packINTENSITY8_UINT16( (uint16_t*)block_ptr, intensityRGBA_linear( rgba, true ) );
             break;
         case VOXEL_DENSITY8_UINT16:
-            packINTENSITY8_UINT16( (uint16_t*)block_ptr, intensityRGBA_linear( rgba ) );
+            packINTENSITY8_UINT16( (uint16_t*)block_ptr, intensityRGBA_linear( rgba, false ) );
             break;
    }
 }
@@ -404,6 +405,7 @@ voxelmapUnpack( voxelmap_t* v, ivec3_32_t position ) {
         case VOXEL_DENSITY8_8ALPHA1_UINT16: {
             unsigned bit_offs =blockOffset( v->format, position );
             rgba =unpackRGBA_INTENSITY8_8ALPHA1_UINT16( *((uint16_t*)block_ptr), bit_offs );
+            rgba = rgba * rgba.a;
             rgba.a =rgba.r;
             break;
         }
@@ -534,10 +536,10 @@ packRGBA_RGB24_8ALPHA1_UINT32( uint32_t *rgb24_8alpha1, int offset, glm::vec4 rg
     int count =BitsSetTable256[lower_bits];
     glm::vec3 color(0);
     if( count ) {
-        glm::vec3 color = glm::vec3 (
-            (float)((*rgb24_8alpha1 >> 24) & 0xff) / 255.f,
-            (float)((*rgb24_8alpha1 >> 16) & 0xff) / 255.f,
-            (float)((*rgb24_8alpha1 >> 8) & 0xff) / 255.f );
+        color = glm::vec3 (
+            (float)(((*rgb24_8alpha1) >> 24) & 0xff) / 255.f,
+            (float)(((*rgb24_8alpha1) >> 16) & 0xff) / 255.f,
+            (float)(((*rgb24_8alpha1) >> 8) & 0xff) / 255.f );
     }
     if( rgba.a >= 0.5f ) {
         color *= (float)count;
@@ -546,7 +548,7 @@ packRGBA_RGB24_8ALPHA1_UINT32( uint32_t *rgb24_8alpha1, int offset, glm::vec4 rg
     }
 
     packBIT_UINT8( &lower_bits, offset, rgba.a >= 0.5f ); 
-    *rgb24_8alpha1 =(uint8_t)lower_bits | 
+    *rgb24_8alpha1 =(uint32_t)lower_bits | 
         ((uint32_t)(color.r * 255.f) << 24) |
         ((uint32_t)(color.g * 255.f) << 16) |
         ((uint32_t)(color.b * 255.f) << 8);
@@ -604,7 +606,7 @@ packRGBA_INTENSITY8_8ALPHA1_UINT16( uint16_t *intensity8_8alpha1, int offset, gl
     }
     if( rgba.a >= 0.5f ) {
         intensity *= (float)count;
-        intensity += intensityRGBA_linear( rgba );
+        intensity += intensityRGBA_linear( rgba, false );
         intensity /= (float)(count+1);
     }
 
@@ -617,8 +619,7 @@ VOXOWL_HOST_AND_DEVICE
 glm::vec4 
 unpackRGBA_INTENSITY8_8ALPHA1_UINT16( uint16_t intensity8_8alpha1, int offset ) {
     float intensity =(float)((intensity8_8alpha1 >> 8) & 0xff) / 255.f;
-    return glm::vec4 ( intensity, intensity, intensity, 
-        (float)unpackBIT_UINT8( intensity8_8alpha1, offset ) );
+    return glm::vec4 ( intensity, intensity, intensity, (float)unpackBIT_UINT8( intensity8_8alpha1, offset ) );
 }
 
 /*! Pack one intensity float and an alpha bitmap [0,7] into one uint16 using intensity8_8alpha1 encoding */
@@ -717,17 +718,17 @@ unpackINTENSITY8_UINT16( uint16_t intensity ) {
 /* Calculate the perceived intensity of an RGBA quadruple. Values are assumed to be linear */
 VOXOWL_HOST_AND_DEVICE 
 float 
-intensityRGBA_linear( glm::vec4 rgba ) {
+intensityRGBA_linear( glm::vec4 rgba, bool multiply_alpha ) {
     // We use CIE 1931 weights and alpha as absolute weight using the following formula
     // Y = A( 0.2126R + 0.7152G + 0.0722B )
-    return ( rgba.a * ( 0.2126f * rgba.r + 0.7152f * rgba.g + 0.0722 * rgba.b ) );
+    return ( (multiply_alpha ? rgba.a : 1.f) * ( 0.2126f * rgba.r + 0.7152f * rgba.g + 0.0722 * rgba.b ) );
 }
 
 /* Calculate the perceived intensity of an RGBA quadruple. Values are assumed to be linear */
 VOXOWL_HOST_AND_DEVICE 
 uint8_t 
-intensityRGBA_UINT32_linear( uint32_t rgba ) {
-    return intensityRGBA_linear( unpackRGBA_UINT32( rgba ) ) / 255.f;
+intensityRGBA_UINT32_linear( uint32_t rgba, bool multiply_alpha ) {
+    return intensityRGBA_linear( unpackRGBA_UINT32( rgba ), multiply_alpha ) / 255.f;
 }
 
 /* Calculate the perceived intensity of an RGBA quadruple by fast, inaccurate conversion. Values are assumed to be linear */
@@ -747,14 +748,14 @@ intensityRGBA_UINT32_fastlinear( uint32_t rgba ) {
 VOXOWL_HOST_AND_DEVICE 
 bool 
 thresholdRGBA_linear( glm::vec4 rgba, float threshold ) {
-    return intensityRGBA_linear( rgba ) >= threshold;
+    return intensityRGBA_linear( rgba, true ) >= threshold;
 }
 
 /* Calculate if a RGBA quadruple is 'black' (false) or 'white' depending on the given treshold [0,1] */
 VOXOWL_HOST_AND_DEVICE 
 bool 
 thresholdRGBA_UINT32_linear( uint32_t rgba, float threshold ) {
-    return intensityRGBA_UINT32_linear( rgba ) >= (255.f * threshold);
+    return intensityRGBA_UINT32_linear( rgba, true ) >= (255.f * threshold);
 }
 
 /* Calculate if a RGBA quadruple is 'black' (false) or 'white' using fast, inaccurate conversion, depending on the given treshold [0,255] */

@@ -275,6 +275,9 @@ computeFragmentNormal( raycastInfo_t raycast_info, volumeDevice_t volume, frameb
             (float)x / (float)framebuffer.width, 
             (float)y / (float)framebuffer.height );
     float depth =normal_depth.w;
+    if( depth == FAR )
+        return;
+
     int pixels_per_voxel =1;//(int)ceilf( volume.voxel_width / (raycast_info.fragmentWidthWorldDelta * -depth) );
     glm::vec3 p = positionFromDepth( raycast_info, x, y, depth );
 
@@ -505,6 +508,9 @@ computeFragmentSSAO( raycastInfo_t raycast_info, ssaoInfo_t ssao_info, framebuff
     float4 normal_depth =tex2D<float4>( framebuffer.normal_depth_sampler, 
             (float)x / (float)framebuffer.width, 
             (float)y / (float)framebuffer.height );
+    if( normal_depth.z - 1.f < FAR )
+        return;
+
     glm::vec3 normal( normal_depth.x, normal_depth.y, normal_depth.z );
     
     // Calculate the origin (position) of the fragment in view space using the depth

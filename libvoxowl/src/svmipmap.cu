@@ -11,11 +11,11 @@
 
 #define DATA_RESIZE 8192
 
-VOXOWL_HOST int ensureSize( svmipmap_t* m, size_t new_size );
+VOXOWL_HOST size_t ensureSize( svmipmap_t* m, size_t new_size );
 VOXOWL_HOST ivec3_32_t nextMipmapSize( ivec3_32_t size, ivec3_32_t block_size );
 
 VOXOWL_HOST
-uint32_t
+glm::vec4
 encodeBlock( voxelmap_t *dst, 
              voxelmap_t *src, 
              ivec3_32_t offset, 
@@ -37,18 +37,36 @@ encodeBlock( voxelmap_t *dst,
                 list[count++] =rgba;
                 sum +=glm::dvec4( rgba );
 
-                if( dst->format == VOXEL_BITMAP_UINT8 )
+                /*if( bitsPerVoxel( dst->format ) == 1 )
                     voxelmapPack( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ), glm::vec4( rgba.a >= .5f ) );
-                else if( convert )
+                else*/ if( convert )
                     voxelmapPack( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ), rgba );
                 else {
-                    uint32_t rgb24a1 = *(uint32_t*)voxel( src, ivec3_32( x, y, z ) );
-                    *(uint32_t*)voxel( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ) )
-                        = rgb24a1;
+                    uint8_t lower_bits;
+                    switch( bitsPerVoxel( dst->format ) ) {
+                        case 8: {
+                            lower_bits = *(uint8_t*)voxel( src, ivec3_32( x, y, z ) );
+                            *(uint32_t*)voxel( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ) ) = lower_bits;
+                            break;
+                        }
+                        case 16: {
+                            uint16_t u16 = *(uint16_t*)voxel( src, ivec3_32( x, y, z ) );
+                            *(uint16_t*)voxel( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ) ) = u16;
+                            lower_bits =u16 & 0xff;
+                            break;
+                        }
+                        case 32: {
+                            uint32_t u32 = *(uint32_t*)voxel( src, ivec3_32( x, y, z ) );
+                            *(uint32_t*)voxel( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ) ) = u32;
+                            lower_bits =u32 & 0xff;
+                            break;
+                        }
+                    }
+
                     // A block can only be homogeneous if all its voxels are
                     // terminal (except for the baselevel)
                     if( !base_level )
-                        *homogeneous = *homogeneous && isTerminal( rgb24a1 );
+                        *homogeneous = *homogeneous && isTerminal( lower_bits );
                 }
 
             }
@@ -72,15 +90,15 @@ encodeBlock( voxelmap_t *dst,
                  if( homogeneous && *homogeneous && count )
                     *homogeneous =*homogeneous && glm::all( glm::lessThanEqual ( glm::abs( rgba - avg), glm::vec4( opts->delta ) ) );
             }*/
-    
+/*    
     // Currently, only 1-bit alpha is supported because we need the other 
     // 7 bits for bookkeeping
     uint32_t rgba;
     packRGB24A1_UINT32( &rgba, avg );
 
     // The 6th bit is used to set the terminal condition (leaf node)
-    setTerminal( &rgba, *homogeneous );
-    return rgba;
+    setTerminal( &rgba, *homogeneous );*/
+    return avg;
 }
 
 
@@ -92,7 +110,8 @@ encodeLevel( svmipmap_t * m,
              bool base_level, 
              unsigned int blockwidth,
              svmm_encode_opts_t opts,
-             int *blocks_written ) {
+             int *blocks_written,
+             svmm_level_header_t *lheader ) {
     // Calculate the block size and number of (super)blocks that are contained within
     // the given volume
     ivec3_32_t block_size =ivec3_32( blockwidth );
@@ -109,10 +128,27 @@ encodeLevel( svmipmap_t * m,
 
     // This structure will be used to populate the blocks of the current level
     voxelmap_t block;
-    if( base_level && opts.bitmapBaselevel )
-        block.format =VOXEL_BITMAP_UINT8;
+    if( base_level && opts.bitmapBaselevel ) {
+        if( blockwidth == 2)
+                block.format =VOXEL_BITMAP_UINT8;
+        else {
+            switch( opts.format ) {
+                case VOXEL_RGB24A1_UINT32:
+                case VOXEL_RGB24A3_UINT32:
+                    block.format =VOXEL_RGB24_8ALPHA1_UINT32;
+                    break;
+                case VOXEL_DENSITY8_UINT16:
+                    block.format =VOXEL_DENSITY8_8ALPHA1_UINT16;
+                    break;
+                case VOXEL_INTENSITY8_UINT16:
+                    block.format =VOXEL_INTENSITY8_8ALPHA1_UINT16;
+                    break;
+            }
+        }
+    }
     else
         block.format =opts.format;
+    lheader->format =block.format;
     block.size =block_size;
     block.blocks =blockCount( block.format, block_size );
     block.data =0;
@@ -120,13 +156,13 @@ encodeLevel( svmipmap_t * m,
     size_t bytes_per_block =voxelmapSize( &block ); 
 
     // Offset (number of blocks) within the level
-    uint64_t level_offset =0;
+    uint32_t level_offset =0;
 
     for( int z=0; z < blockgroup_count.z; z++ ) {
         printf( "Writing Z-Blockgroup %d\n", z );
         for( int y=0; y < blockgroup_count.y; y++ ) {
             for( int x=0; x < blockgroup_count.x; x++ ) {
-                uint64_t blockgroup_level_offset =level_offset;
+                uint32_t blockgroup_level_offset =level_offset;
                 
                 for( int k=0; k < 2; k++ )
                     for( int j=0; j < 2; j++ )
@@ -134,20 +170,22 @@ encodeLevel( svmipmap_t * m,
                             // Prepare to write a new block into the data pointer
                             ensureSize( m, *data_offset + bytes_per_block );
                             block.data =m->data_ptr + *data_offset;
-                            //memset( block.data, 0xff, bytes_per_block ); // DEBUG
+
+                            if( base_level && opts.bitmapBaselevel )
+                                memset( block.data, 0x0, bytes_per_block );
                             
                             bool homogeneous;
                             // Calculate the offset into the source voxelmap
-                            ivec3_32_t offset =ivec3_32( (2 * x + i) * blockwidth, 
-                                                         (2 * y + j) * blockwidth, 
-                                                         (2 * z + k) * blockwidth);
+                            ivec3_32_t offset =ivec3_32( (2 * x + i), 
+                                                         (2 * y + j), 
+                                                         (2 * z + k));
                             // encodeBlock() will calculate the average and copy the
                             // block data into 'block'
                             // 'avg' now contains packed RGB as well as a 1-bit alpha
                             // and a terminal bit
-                            uint32_t avg =encodeBlock( &block, 
+                            glm::vec4 avg =encodeBlock( &block, 
                                                        v, 
-                                                       offset, 
+                                                       ivec3_mults32( offset, blockwidth ), 
                                                        block_size, 
                                                        &homogeneous,
                                                        base_level, 
@@ -155,15 +193,37 @@ encodeLevel( svmipmap_t * m,
 
                             //memset( block.data, 0x0f, bytes_per_block ); // DEBUG
                             // The least significant 6 bits will be used to
-                            // store (a part) of the in total 48 bits that
+                            // store (a part) of the in total 32 bits that
                             // contain the offset of the current blockgroup
-                            int bit_offs =6*(k*4+j*2+i); // column-major
-                            uint64_t bits =blockgroup_level_offset & (0x3f << bit_offs);
-                            avg &= ~0x3f; 
-                            avg |= (uint32_t)(bits >> bit_offs);
+                            int bit_offs =SVMM_OFFSET_BITS * (k*4+j*2+i); // column-major
+                            uint32_t bits =blockgroup_level_offset & (SVMM_OFFSET_BITS_MASK << bit_offs);
+                            
+                            
+                            // We way we store the average + offset bits, depends on the level's format
+                            
+                            voxelmapPack( parent, offset, avg );
+
+/*                            switch( opts.format ) {
+                                case VOXEL_RGB24A1_UINT32:
+                                    break;
+                                case VOXEL_RGB24A3_UINT32:
+                                    block.format =VOXEL_RGB24_8ALPHA1_UINT32;
+                                    break;
+                                case VOXEL_DENSITY8_UINT16:
+                                    block.format =VOXEL_DENSITY8_8ALPHA1_UINT16;
+                                    break;
+                                case VOXEL_INTENSITY8_UINT16:
+                                    block.format =VOXEL_INTENSITY8_8ALPHA1_UINT16;
+                                    break;
+                            }*/
+
+                            uint8_t *lower_bits =(uint8_t*)voxel( parent, offset );
+
+                            (*lower_bits) &= ~SVMM_OFFSET_BITS_MASK; 
+                            (*lower_bits) |= (uint8_t)(bits >> bit_offs);
+                            setTerminal( lower_bits, homogeneous );
 
                             // Write the average to the parent level temporary
-                            *(uint32_t*)voxel( parent, ivec3_32( 2*x+i, 2*y+j, 2*z+k ) ) =avg;
 
                             // If the calculated block is NOT homogeneous, we actually need
                             // to store it. A homogeneous block contains only the same values
@@ -190,6 +250,9 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
     // Only accepts formats that reserve the lower 8 bits for structural information
     switch( opts.format ) {
         case VOXEL_RGB24A1_UINT32:
+        case VOXEL_RGB24A3_UINT32:
+        case VOXEL_INTENSITY8_UINT16:
+        case VOXEL_DENSITY8_UINT16:
             break;
         default:
             return -1;
@@ -225,12 +288,12 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
         // Remember where this level begins
         size_t level_begin =data_offset;
 
-        // If we're not the base level, we add an header to the beginning
-        //if( v != uncompressed ) {
-            data_offset += sizeof( svmm_level_header_t );
-            m->data_size =ensureSize( m, data_offset );
-        //} 
-        //else fprintf( stderr, "base" );
+        // Prepare the level header
+        data_offset += sizeof( svmm_level_header_t );
+        ensureSize( m, data_offset );
+        
+        svmm_level_header_t *lheader =(svmm_level_header_t*)(m->data_ptr + level_begin);
+        memset( lheader, 0, sizeof( svmm_level_header_t ) );
 
         int block_count =0;
         // Encode the current mipmap level into blocks
@@ -240,19 +303,15 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
                                          v == uncompressed, 
                                          blockwidth,
                                          opts,
-                                         &block_count
+                                         &block_count,
+                                         lheader
                                          );
 
 
         // If we're not the base level, cleanup and set the next point to the
         // correct offset (negative/backward)
-        svmm_level_header_t *lheader =(svmm_level_header_t*)(m->data_ptr + level_begin);
-        memset( lheader, 0, sizeof( svmm_level_header_t ) );
+        lheader =(svmm_level_header_t*)(m->data_ptr + level_begin); // Reset the pointer, its address may have changed
         lheader->next =noffset;
-        if( v == uncompressed && opts.bitmapBaselevel )
-            lheader->format =VOXEL_BITMAP_UINT8;
-        else
-            lheader->format =opts.format;
         lheader->blockwidth =blockwidth;
         lheader->mipmap_factor =mipmap_factor;
         lheader->block_count =block_count;
@@ -392,7 +451,27 @@ svmmSetOpts( svmm_encode_opts_t *opts,
              int quality ) {
     opts->blockwidth =4;
     opts->rootwidth =24;
-    opts->format =VOXEL_RGB24A1_UINT32;
+    switch( uncompressed->format ) {
+        case VOXEL_RGBA_UINT32:
+        case VOXEL_RGB24A3_UINT32:
+            opts->format =VOXEL_RGB24A3_UINT32;
+            break;
+        case VOXEL_RGB24_8ALPHA1_UINT32:
+        case VOXEL_RGB24A1_UINT32:
+            opts->format =VOXEL_RGB24A1_UINT32;
+            break;
+        case VOXEL_INTENSITY8_UINT16:
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+        case VOXEL_INTENSITY_UINT8:
+        case VOXEL_BITMAP_UINT8:
+            opts->format =VOXEL_INTENSITY8_UINT16;
+            break;
+        case VOXEL_DENSITY8_UINT16:
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
+        case VOXEL_DENSITY_UINT8:
+            opts->format =VOXEL_DENSITY8_UINT16;
+            break;
+    }
     opts->delta =0.5f - (float)quality / 200.f;
     opts->bitmapBaselevel =true;
 }
@@ -479,12 +558,13 @@ getBlockOffset( voxelmap_t *block, ivec3_32_t subblock_index, ivec3_32_t block_o
                 ivec3_32_t abs_index =ivec3_32( i + subblock_index.x, 
                                                 j + subblock_index.y, 
                                                 k + subblock_index.z );
-                //uint32_t rgb24a1 =*(uint32_t*)voxel( subblock, ivec3_32( i, j, k ) );
-                uint32_t rgb24a1 =*(uint32_t*)voxel( block, abs_index );
-                int bit_offs =6*(k*4+j*2+i); // column-major
-                offset |= ((uint64_t)(rgb24a1 & 0x3f)) << bit_offs;
+                
+                uint8_t lower_bits =*(uint8_t*)voxel( block, abs_index );
+                int bit_offs =SVMM_OFFSET_BITS * (k*4+j*2+i); // column-major
+                offset |= ((uint64_t)(lower_bits & SVMM_OFFSET_BITS_MASK)) << bit_offs;
+                
                 // Count the blocks we need to skip, only if they're non-empty
-                skip += ( !(rgb24a1 & 0x40) && n < block_idx ) ? 1 : 0;
+                skip += ( !(lower_bits & SVMM_TERMINAL_BIT_MASK) && n < block_idx ) ? 1 : 0;
                 n++;
             }
     // We just calculated the offset of the block pointed to by the first voxel in
@@ -545,7 +625,7 @@ svmmDecodeVoxel( svmipmap_t* m, ivec3_32_t position ) {
         subblock_index.z -=block_offset.z;
 
         // Retrieve the value we want
-        uint32_t value =0;
+        uint8_t lower_bits =0;
         switch( block.format ) {
             case VOXEL_BITMAP_UINT8: {
                 // We use parent's color value
@@ -553,18 +633,15 @@ svmmDecodeVoxel( svmipmap_t* m, ivec3_32_t position ) {
                 color.a =alpha.a;
                 break;
             }
-            case VOXEL_RGB24A1_UINT32:
-                value =*(uint32_t*)voxel( &block, block_index );
-                color =unpackRGB24A1_UINT32( value );
-                break;
             default:
-                // Completely invalid format
-                return glm::vec4(1,0,0,1);
+                color =voxelmapUnpack( &block, block_index );
+                lower_bits =*(uint8_t*)voxel( &block, block_index );
+                break;
         }
 
         // If we're either at level 0 (highest mipmap resolution) or the
         // terminal bit is set, we break the loop
-        if( level == 0 || isTerminal( value ) )
+        if( level == 0 || isTerminal( lower_bits ) )
             break;
 
         // We continue, fetch the level header to calucate the negative offset
@@ -639,7 +716,7 @@ svmmTest( voxelmap_t* uncompressed, int quality ) {
 }
 
 VOXOWL_HOST
-int 
+size_t 
 ensureSize( svmipmap_t *m, size_t new_size ) {
     if( m->data_size < new_size ) {
         new_size +=(size_t)DATA_RESIZE;
@@ -678,18 +755,18 @@ nextMipmapSize( ivec3_32_t size, ivec3_32_t block_size ) {
 
 VOXOWL_HOST_AND_DEVICE
 bool 
-isTerminal( uint32_t rgb24a1 ) {
-    return (rgb24a1 & SVMM_TERMINAL_BIT_MASK);
+isTerminal( uint8_t lower_bits ) {
+    return (lower_bits & SVMM_TERMINAL_BIT_MASK);
 }
 
 VOXOWL_HOST_AND_DEVICE 
 void 
-setTerminal( uint32_t* rgb24a1, bool terminal ) {
-    *rgb24a1 &= ~SVMM_TERMINAL_BIT_MASK;
-    *rgb24a1 |= (terminal ? SVMM_TERMINAL_BIT_MASK : 0x0);
+setTerminal( uint8_t* lower_bits, bool terminal ) {
+    *lower_bits &= ~SVMM_TERMINAL_BIT_MASK;
+    *lower_bits |= (terminal ? SVMM_TERMINAL_BIT_MASK : 0x0);
 }
 
-VOXOWL_HOST_AND_DEVICE 
+/*VOXOWL_HOST_AND_DEVICE 
 bool 
 isStub( uint32_t rgb24a1 ) {
     return (rgb24a1 & SVMM_STUB_BIT_MASK);
@@ -700,4 +777,4 @@ void
 setStub( uint32_t *rgb24a1, bool stub ) {
     *rgb24a1 &= ~SVMM_STUB_BIT_MASK;
     *rgb24a1 |= ((int)stub * SVMM_STUB_BIT_MASK);
-}
+}*/

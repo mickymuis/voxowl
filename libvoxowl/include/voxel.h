@@ -193,10 +193,10 @@ VOXOWL_HOST_AND_DEVICE float unpackINTENSITY8_UINT16( uint16_t intensity );
  */
 
 /*! Calculate the perceived intensity of an RGBA quadruple. Values are assumed to be linear */
-VOXOWL_HOST_AND_DEVICE float intensityRGBA_linear( glm::vec4 rgba );
+VOXOWL_HOST_AND_DEVICE float intensityRGBA_linear( glm::vec4 rgba, bool multiply_alpha );
 
 /*! Calculate the perceived intensity of an RGBA quadruple. Values are assumed to be linear */
-VOXOWL_HOST_AND_DEVICE uint8_t intensityRGBA_UINT32_linear( uint32_t rgba );
+VOXOWL_HOST_AND_DEVICE uint8_t intensityRGBA_UINT32_linear( uint32_t rgba, bool multiply_alpha );
 
 /*! Calculate the perceived intensity of an RGBA quadruple by fast, inaccurate conversion. Values are assumed to be linear */
 VOXOWL_HOST_AND_DEVICE uint8_t intensityRGBA_UINT32_fastlinear( uint32_t rgba );
