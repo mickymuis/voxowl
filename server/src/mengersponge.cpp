@@ -27,6 +27,7 @@ menger( voxelmap_t* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
                             for( size_t k = offs.z; k < offs.z + step; k++ ) {
                                 //glm::vec4 color =voxelmapUnpack( V, ivec3_32(i,j,k ) );
                                 //color.a =0.f;
+                                //voxelmapPack(  V, ivec3_32( i, j, k ), color );
                                 voxelmapPack(  V, ivec3_32( i, j, k ), glm::vec4(0) );
                                 //((uint32_t*)V->data)[size.x * size.y * k + size.x * j + i] &= ~(uint32_t)0xff;
                             }

@@ -49,6 +49,7 @@ typedef struct {
     unsigned int rootwidth;
     float delta;
     bool bitmapBaselevel;
+    bool shiftBlockwidth;
     voxel_format_t format;
 } svmm_encode_opts_t;
 

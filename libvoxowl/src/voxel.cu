@@ -332,6 +332,8 @@ voxelmapPack( voxelmap_t* v, ivec3_32_t position, glm::vec4 rgba ) {
             packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba, true ) );
             break;
         case VOXEL_DENSITY_UINT8:
+            rgba.a = rgba.a < .001f ? 0.f : 1.f;
+            rgba *= rgba.a;
             packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba, false ) );
             break;
         case VOXEL_BITMAP_UINT8: {

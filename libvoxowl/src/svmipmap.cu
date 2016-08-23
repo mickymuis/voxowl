@@ -24,8 +24,9 @@ encodeBlock( voxelmap_t *dst,
              bool base_level, 
              svmm_encode_opts_t *opts ) {
     int count =0;
+    float alpha_count =0.f;
     glm::vec4 list[size.x*size.y*size.z];
-    glm::dvec4 sum;
+    glm::vec4 sum;
     if( homogeneous ) *homogeneous =true;
     bool convert =src->format != dst->format;
 
@@ -35,11 +36,12 @@ encodeBlock( voxelmap_t *dst,
             for( int x =offset.x; x < size.x + offset.x && x < src->size.x; x++ ) {
                 glm::vec4 rgba =voxelmapUnpack( src, ivec3_32( x, y, z ) );
                 list[count++] =rgba;
-                sum +=glm::dvec4( rgba );
+                alpha_count += (rgba.a > 0.001f);
+                sum += rgba;
 
-                /*if( bitsPerVoxel( dst->format ) == 1 )
-                    voxelmapPack( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ), glm::vec4( rgba.a >= .5f ) );
-                else*/ if( convert )
+                if( bitsPerVoxel( dst->format ) == 1 )
+                    voxelmapPack( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ), glm::vec4( rgba.a >= .001f ) );
+                else if( convert )
                     voxelmapPack( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ), rgba );
                 else {
                     uint8_t lower_bits;
@@ -72,7 +74,7 @@ encodeBlock( voxelmap_t *dst,
             }
     
     // Calculate the average
-    glm::vec4 avg =glm::vec4( sum / (double)count );
+    glm::vec4 avg =glm::vec4( sum / (float)count );
    
     for( int i =0; i < count; i++ ) {
          // A block is homogeneous if all its voxels differ no more
@@ -98,6 +100,20 @@ encodeBlock( voxelmap_t *dst,
 
     // The 6th bit is used to set the terminal condition (leaf node)
     setTerminal( &rgba, *homogeneous );*/
+
+    // Calculate the 'nice' average
+    avg = sum / alpha_count;
+/*    avg.a = sum.a / (float) count;
+
+    switch( src->format ) {
+        case VOXEL_DENSITY_UINT8:
+        case VOXEL_DENSITY8_UINT16:
+            break;
+        default:
+            avg.a = (avg.a >= 0.5f) ? 1.f : 0.f;
+            break;
+    }*/
+
     return avg;
 }
 
@@ -330,6 +346,8 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
 
         levels++;
         mipmap_factor *= blockwidth;
+        if( opts.shiftBlockwidth )
+            blockwidth = blockwidth << 1;
         v =parent;
     }
 
@@ -474,6 +492,7 @@ svmmSetOpts( svmm_encode_opts_t *opts,
     }
     opts->delta =0.5f - (float)quality / 200.f;
     opts->bitmapBaselevel =true;
+    opts->shiftBlockwidth =false;
 }
 
 VOXOWL_HOST 
@@ -630,7 +649,7 @@ svmmDecodeVoxel( svmipmap_t* m, ivec3_32_t position ) {
             case VOXEL_BITMAP_UINT8: {
                 // We use parent's color value
                 glm::vec4 alpha =voxelmapUnpack( &block, block_index );
-                color.a =alpha.a;
+                color *= alpha.a;
                 break;
             }
             default:
@@ -648,6 +667,7 @@ svmmDecodeVoxel( svmipmap_t* m, ivec3_32_t position ) {
         data_ptr -=lheader->next;
         // Get the new header
         lheader =(svmm_level_header_t*)data_ptr;
+        block_width =lheader->blockwidth;
 
         // Calculate the offset within the next level using the subblock
         block_size =(pow( block_width, 3 ) / voxelsPerBlock( lheader->format ) ) * bytesPerBlock( lheader->format );
