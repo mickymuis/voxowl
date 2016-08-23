@@ -61,11 +61,11 @@ gridOffset( svmm_level_t* level, int block_num ) {
 }
 
 VOXOWL_DEVICE
-uint64_t
+uint32_t
 getBlockOffsetTex3D( cudaTextureObject_t texture, 
                      glm::ivec3 subblock_index, 
                      glm::ivec3 block_offset ) {
-    uint64_t offset =0;
+    uint32_t offset =0;
     int skip =0;
     int n =0;
     // block's relative index in column-major order
@@ -78,14 +78,14 @@ getBlockOffsetTex3D( cudaTextureObject_t texture,
                 // The least significant 6 bits are used to
                 // store (a part) of the in total 48 bits that
                 // contain the offset of the current blockgroup
-                uint32_t rgb24a1 =tex3D<uint32_t>( texture, 
+                uint8_t lower_bits =(uint8_t)tex3D<uint32_t>( texture, 
                                                    i + subblock_index.x, 
                                                    j + subblock_index.y,
                                                    k + subblock_index.z );
-                int bit_offs =6*(k*4+j*2+i); // column-major
-                offset |= ((uint64_t)(rgb24a1 & 0x3f)) << bit_offs;
+                int bit_offs =SVMM_OFFSET_BITS * (k*4+j*2+i); // column-major
+                offset |= ((uint32_t)(lower_bits & SVMM_OFFSET_BITS_MASK)) << bit_offs;
                 // Count the blocks we need to skip, only if they're non-empty
-                skip += ( !(rgb24a1 & 0x40) && n < block_idx ) ? 1 : 0;
+                skip += ( !(lower_bits & SVMM_TERMINAL_BIT_MASK) && n < block_idx ) ? 1 : 0;
                 n++;
             }
     // We just calculated the offset of the block pointed to by the first voxel in
@@ -135,7 +135,7 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
     int level =0;
     glm::vec4 vox;
     glm::ivec3 abs_index, parent_abs_index, block_index, block_offset, subblock_index, grid_offset, voxel_index;
-    uint64_t block_num =0;
+    uint32_t block_num =0;
     uint32_t vox_raw;
     
     while(1) {
@@ -181,6 +181,19 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
                 vox_raw =tex3D<uint32_t>( cur_level->texture, voxel_index.x, voxel_index.y, voxel_index.z );
                 vox =unpackRGB24A1_UINT32( vox_raw );
                 break;
+            case VOXEL_RGB24A3_UINT32:
+                vox_raw =tex3D<uint32_t>( cur_level->texture, voxel_index.x, voxel_index.y, voxel_index.z );
+                vox =unpackRGB24A3_UINT32( vox_raw );
+                break;
+            case VOXEL_INTENSITY8_UINT16:
+                vox_raw =tex3D<uint16_t>( cur_level->texture, voxel_index.x, voxel_index.y, voxel_index.z );
+                vox =glm::vec4( unpackINTENSITY8_UINT16( (uint16_t)vox_raw ) );
+                vox.a =vox.r != 0.f;
+                break;
+            case VOXEL_DENSITY8_UINT16:
+                vox_raw =tex3D<uint16_t>( cur_level->texture, voxel_index.x, voxel_index.y, voxel_index.z );
+                vox =glm::vec4( unpackINTENSITY8_UINT16( (uint16_t)vox_raw ) );
+                break;
             case VOXEL_BITMAP_UINT8: {
                 glm::vec4 alpha =voxelTex3D( cur_level->texture, cur_level->format, voxel_index );
                 vox.a =alpha.a;
@@ -193,7 +206,7 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
         }
         
         // Refinement is needed, do not advance
-        if( cur_level->mipmap_factor > fragment_width && level < v->levels-1 && !isTerminal( vox_raw ) ) {
+        if( cur_level->mipmap_factor > fragment_width && level < v->levels-1 && !isTerminal( (uint8_t)vox_raw ) ) {
             block_num =getBlockOffsetTex3D( cur_level->texture, 
                                             grid_offset * cur_level->texels_per_blockwidth + subblock_index, 
                                             block_offset );
@@ -205,14 +218,14 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
         
         frag.color =blendF2B( vox, frag.color );
 
-        if( vox.a > 0.1f && !frag.hit ) {
+        if( vox.a > 0.001f && !frag.hit ) {
             // We calculate the position in unit-cube space..
             frag.position =position_vs / (float)largest - b.max;
             // ..and the normal of the current 'face' of the voxel
             frag.normal[side] = -step[side];
             frag.hit =true;
         }
-        if( frag.color.a < 0.1f )
+        if( frag.color.a < 0.001f )
             break;
         
         // Advance one step with in the current level

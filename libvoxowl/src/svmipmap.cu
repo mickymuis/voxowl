@@ -467,7 +467,7 @@ void
 svmmSetOpts( svmm_encode_opts_t *opts, 
              voxelmap_t* uncompressed, 
              int quality ) {
-    opts->blockwidth =4;
+    opts->blockwidth =2;
     opts->rootwidth =24;
     switch( uncompressed->format ) {
         case VOXEL_RGBA_UINT32:

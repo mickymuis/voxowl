@@ -3,7 +3,7 @@
 #include "volume.h"
 #include "volume_detail.h"
 
-class MengerSponge : public VolumeVoxelmap {
+class MengerSponge : public VolumeSVMipmap {
     public:
         enum MODE {
             COLORS_RGBA
