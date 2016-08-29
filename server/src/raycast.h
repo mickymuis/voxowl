@@ -19,8 +19,9 @@ typedef struct {
 typedef struct {
     glm::vec4 color; //rgba
     glm::vec3 position;
-    glm::vec3 position_vs; // position in continuous voxel space
+//    glm::vec3 position_vs; // position in continuous voxel space
     glm::vec3 normal;
+    bool hit;
 } fragment_t;
 
 typedef struct {
@@ -28,13 +29,14 @@ typedef struct {
     glm::mat4 matInvModelView;
     glm::vec3 upperLeftNormal;
     glm::vec3 upperRightNormal;
-    glm::vec3 lowerLeftNormal;
-    glm::vec3 lowerRightNormal;
+//    glm::vec3 lowerLeftNormal;
+//    glm::vec3 lowerRightNormal;
     glm::vec3 leftNormalYDelta;
     glm::vec3 rightNormalYDelta;
     glm::vec3 origin;
-    float invHeight;
+//    float invHeight;
     float invWidth;
+    float fragmentWidthDelta, fragmentWidthWorldDelta;
 } raycastInfo_t;
 
 /*typedef struct {
@@ -51,11 +53,13 @@ typedef struct {
    - The resulting box is axis aligned, unit sized and centered around (0,0,0)
    - The ratios width/height/depth match the given size vector 
    - The largest direction in the size vector will measure 1.0 in the box */
-VOXOWL_HOST_AND_DEVICE box_t volumeSizeToAABB( glm::ivec3 size );
+VOXOWL_HOST_AND_DEVICE box_t volumeSizeToAABB( const glm::ivec3 &size );
 
 /* Given a ray r and an AABB b, return true if r intersects b in any point
    Additionally, the entry and exit constants tmin and tmax are set */
-VOXOWL_HOST_AND_DEVICE bool rayAABBIntersect( const ray_t &r, const box_t& b, double& tmin, double& tmax );
+VOXOWL_HOST_AND_DEVICE bool rayAABBIntersect( const ray_t &r, const box_t& b, float& tmin, float& tmax );
+
+VOXOWL_HOST_AND_DEVICE void blendF2B_fast( const glm::vec4 &src, glm::vec4 &dst );
 
 /* Set projection planes and view matrix using the given model, view and projection matrices/
    x_size and y_size give the screen's width and height in pixels, respectively */

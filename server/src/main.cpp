@@ -16,17 +16,9 @@
 #include "camera.h"
 #include "raycast_cuda.h"
 #include "mengersponge.h"
-
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)  \
-      (byte & 0x80 ? '1' : '0'), \
-  (byte & 0x40 ? '1' : '0'), \
-  (byte & 0x20 ? '1' : '0'), \
-  (byte & 0x10 ? '1' : '0'), \
-  (byte & 0x08 ? '1' : '0'), \
-  (byte & 0x04 ? '1' : '0'), \
-  (byte & 0x02 ? '1' : '0'), \
-  (byte & 0x01 ? '1' : '0') 
+#include "volume_loader.h"
+#include "performance_counter.h"
+#include "testing.h"
 
 Parser parser;
 
@@ -75,61 +67,14 @@ outgoing_packet( const Packet& p_send ) {
     p_send.connection->pbuffer->enqueue( p_send );
 }
 
-/*void 
-dummy_data_thread( Server *server ) {
-    Packet packet;
-    packet.direction =Packet::SEND;
-    packet.mode =Packet::CHAR;
-    packet.payload =(void*)"Molly!";
-    packet.own_payload =false;
-    packet.size =7;
-
-    while( true ) {
-        //std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
-        sleep( 1 );
-
-        Connection *conn =server->getDataConnection();
-        if( conn ) {
-            packet.connection =conn;
-            conn->pbuffer->enqueue( packet );
-            std::cerr << "Enqueue yar!" << std::endl;
-        }
-    }
-}*/
-
-/* Test class
-   class Gpu : public Object {
-    public:
-        Gpu( const char* name, Object* parent ) : Object( name, parent ) {
-            addMethod( "exec" );
-        }
-
-        virtual Variant callMeta( const std::string& method, const Variant::list& args ) {
-            if( method == "exec" ) {
-                main_gpu(0,0);
-                return Variant( "done" );
-            }
-            return Object::callMeta( method, args );
-        }
-};
-*/
+//#define TESTING
 
 int
 main( int argc, char** argv ) {
 
-    /*uint32_t a;
-    glm::vec4 rgba( .75f, .5f, .25f, 1.f );
-    packRGBA_RGB24_8ALPHA1_UINT32( &a, 0, rgba );
-    printf( "a: 0x%x alpha "BYTE_TO_BINARY_PATTERN"\n", a, BYTE_TO_BINARY( (uint8_t)a ) );
-    rgba =unpackRGBA_RGB24_8ALPHA1_UINT32( a, 0 );
-    printf( "rgba(0): %f %f %f %f\n", rgba.r, rgba.g, rgba.b, rgba.a );
-    packRGBA_RGB24_8ALPHA1_UINT32( &a, 7, rgba );
-    printf( "a: 0x%x alpha "BYTE_TO_BINARY_PATTERN"\n", a, BYTE_TO_BINARY( (uint8_t)a ) );
-    rgba =unpackRGBA_RGB24_8ALPHA1_UINT32( a, 1 );
-    printf( "rgba(1): %f %f %f %f\n", rgba.r, rgba.g, rgba.b, rgba.a );
-    packRGBA_RGB24_8ALPHA1_UINT32( &a, 7, rgba );
-    printf( "a: 0x%x alpha "BYTE_TO_BINARY_PATTERN"\n", a, BYTE_TO_BINARY( (uint8_t)a ) );*/
-
+#ifdef TESTING
+    return testingMain( argc, argv );
+#endif
 
     /* Setup the environment */
     Object root("root");
@@ -141,19 +86,48 @@ main( int argc, char** argv ) {
     fb.setTarget( Framebuffer::TARGET_REMOTE );
     fb.setMode( Framebuffer::MODE_JPEG );
     fb.setPixelFormat( Framebuffer::PF_RGB888 );
-    fb.setAASamples( 2, 2 );
+    fb.setAASamples( 1, 1 );
+    fb.setClearColor( glm::vec4( 1.f, 1.f, 1.f, 1.f ) );
+    //fb.setClearColor( glm::vec4( .85f, .84f, .75f, 1.f ) );
     fb.reinitialize();
 
     Camera camera( "camera", &root );
     
-    MengerSponge sponge( "mengersponge", &root );
-    sponge.setDepth( 5 );
+  /*  MengerSponge sponge( "mengersponge", &root );
+    sponge.setDepth( 7 );*/
+
+    VolumeLoader loader( "volumeloader", &root );
+    if( argc > 1 ) {
+        std::string path( argv[1] );
+        if( !loader.open( path ) )
+            std::cerr << loader.errorString() << std::endl;
+    }
 
     RaycasterCUDA renderer( "renderer", &root );
     renderer.setFramebuffer( &fb );
     renderer.setCamera( &camera );
-    renderer.setVolume( &sponge );
-    
+    renderer.setVolume( &loader );
+
+    /*renderer.beginRender();
+    renderer.synchronize();
+
+        VolumeVoxelmapStorageDetail* detail =dynamic_cast<VolumeVoxelmapStorageDetail*>(loader.storageDetail());
+        if( !detail ) {
+            fprintf( stderr, "File not a voxelmap\n" );
+            return -1;
+        }
+        voxelmap_t* voxelmap =detail->getVoxelmap();
+        VolumeSVMipmap volume( "volume", &root );
+        
+        svmipmap_t svmm;
+        bzero( &svmm, sizeof( svmipmap_t ) );
+        svmm_encode_opts_t opts;
+        svmmSetOpts( &opts, voxelmap, 50 );
+
+        svmmEncode( &svmm, voxelmap, opts );
+        volume.setSVMipmap( &svmm );
+        renderer.setVolume( &volume );*/
+
     /* */
     uint32_t portnum =5678;
     if( argc > 1 && atoi( argv[1] ) != 0 )
@@ -177,6 +151,9 @@ main( int argc, char** argv ) {
     /* Wait for any threads to join */
     pbuffer.stopThread();
     pbuffer_thread.join();
+
+    PerformanceCounter::printAll( std::cout );
+    PerformanceCounter::cleanup();
 
     return 0;
 }

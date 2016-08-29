@@ -2,6 +2,15 @@
 #include <stdio.h>
 #include <string.h>
 
+// Source: http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetTable
+static const unsigned char BitsSetTable256[256] = 
+{
+#   define B2(n) n,     n+1,     n+1,     n+2
+#   define B4(n) B2(n), B2(n+1), B2(n+1), B2(n+2)
+#   define B6(n) B4(n), B4(n+1), B4(n+1), B4(n+2)
+        B6(0), B6(1), B6(1), B6(2)
+};
+
 /* Initialize volume and allocate its buffer */
 VOXOWL_HOST
 void 
@@ -40,9 +49,9 @@ voxelmapSafeCopy( voxelmap_t* dst, voxelmap_t* src ) {
     if( dst->format == src->format ) {
         memcpy( dst->data, src->data, voxelmapSize( dst ) );
     } else {
-        for( int x =0; x < dst->size.x; x++ )
+        for( int z =0; z < dst->size.z; z++ )
             for( int y =0; y < dst->size.y; y++ )
-                for( int z =0; z < dst->size.z; z++ ) {
+                for( int x =0; x < dst->size.x; x++ ) {
                     voxelmapPack( dst, ivec3_32( x, y, z ),
                         voxelmapUnpack( src, ivec3_32( x, y, z ) ) );
                 }
@@ -60,6 +69,7 @@ bitsPerVoxel( voxel_format_t f ) {
             s =32;
             break;
         case VOXEL_INTENSITY_UINT8:
+        case VOXEL_DENSITY_UINT8:
             s =8;
             break;
         case VOXEL_BITMAP_UINT8:
@@ -69,7 +79,16 @@ bitsPerVoxel( voxel_format_t f ) {
             s =4;
             break;
         case VOXEL_RGB24A1_UINT32:
+        case VOXEL_RGB24A3_UINT32:
             s =32;
+            break;
+        case VOXEL_INTENSITY8_UINT16:
+        case VOXEL_DENSITY8_UINT16:
+            s =16;
+            break;
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
+            s =2;
             break;
         default:
             s =0;
@@ -88,6 +107,7 @@ bytesPerBlock( voxel_format_t f ) {
             s =4;
             break;
         case VOXEL_INTENSITY_UINT8:
+        case VOXEL_DENSITY_UINT8:
             s =1;
             break;
         case VOXEL_BITMAP_UINT8:
@@ -97,7 +117,16 @@ bytesPerBlock( voxel_format_t f ) {
             s =4;
             break;
         case VOXEL_RGB24A1_UINT32:
+        case VOXEL_RGB24A3_UINT32:
             s =4;
+            break;
+        case VOXEL_INTENSITY8_UINT16:
+        case VOXEL_DENSITY8_UINT16:
+            s =2;
+            break;
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
+            s =2;
             break;
         default:
             s =1;
@@ -116,6 +145,7 @@ voxelsPerBlock( voxel_format_t f ) {
             s =1;
             break;
         case VOXEL_INTENSITY_UINT8:
+        case VOXEL_DENSITY_UINT8:
             s =1;
             break;
         case VOXEL_BITMAP_UINT8:
@@ -125,7 +155,16 @@ voxelsPerBlock( voxel_format_t f ) {
             s =8;
             break;
         case VOXEL_RGB24A1_UINT32:
+        case VOXEL_RGB24A3_UINT32:
             s =1;
+            break;
+        case VOXEL_INTENSITY8_UINT16:
+        case VOXEL_DENSITY8_UINT16:
+            s =1;
+            break;
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
+            s =8;
             break;
         default:
             s =1;
@@ -140,6 +179,8 @@ VOXOWL_HOST_AND_DEVICE unsigned int blockWidth( voxel_format_t f ) {
     switch( f ) {
         case VOXEL_BITMAP_UINT8:
         case VOXEL_RGB24_8ALPHA1_UINT32:
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
             return 2;
         default:
             break;
@@ -157,6 +198,8 @@ blockCount( voxel_format_t f, ivec3_32_t size ) {
     // Optimized out, blockwidth can only be 1 or 2
 
     switch( f ) {
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
         case VOXEL_BITMAP_UINT8:
         case VOXEL_RGB24_8ALPHA1_UINT32:
             // Blockwidth is 2
@@ -187,6 +230,8 @@ blockPosition( voxel_format_t f, ivec3_32_t position ) {
     // Optimized out, blockwidth can only be 1 or 2
 
     switch( f ) {
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
         case VOXEL_BITMAP_UINT8:
         case VOXEL_RGB24_8ALPHA1_UINT32:
             // Blockwidth is 2
@@ -205,11 +250,22 @@ blockPosition( voxel_format_t f, ivec3_32_t position ) {
 VOXOWL_HOST_AND_DEVICE 
 unsigned int 
 blockOffset( voxel_format_t f, ivec3_32_t position ) {
-    unsigned int blockwidth =blockWidth( f );
-    unsigned int x_offs = position.x % blockwidth;
-    unsigned int y_offs = position.y % blockwidth;
-    unsigned int z_offs = position.z % blockwidth;
-    return blockwidth * blockwidth * z_offs + blockwidth * y_offs + x_offs;
+    
+    switch( f ) {
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
+        case VOXEL_BITMAP_UINT8:
+        case VOXEL_RGB24_8ALPHA1_UINT32: {
+            // Blockwidth is 2
+            unsigned int x_offs = position.x & 0x1;
+            unsigned int y_offs = position.y & 0x1;
+            unsigned int z_offs = position.z & 0x1;
+            return 4 * z_offs + 2 * y_offs + x_offs;
+        }
+        default:
+            break;
+    }
+    return 0;
 }
 
 /* Return the size of a volume's data in bytes */
@@ -218,14 +274,14 @@ size_t
 voxelmapSize( voxelmap_t *v ) {
 //    double bytes = (double)(bitsPerVoxel( v->format ) * v->size.x * v->size.y * v->size.z) / 8;
 //    return (size_t)ceil( bytes );
-    return v->blocks.x * v->blocks.y * v->blocks.z * bytesPerBlock( v->format );
+    return (size_t)v->blocks.x * (size_t)v->blocks.y * (size_t)v->blocks.z * (size_t)bytesPerBlock( v->format );
 }
 
 VOXOWL_HOST_AND_DEVICE 
 size_t 
 voxelmapSize( voxel_format_t f, ivec3_32_t size, ivec3_32_t scale ) {
     ivec3_32_t blocks =blockCount( f, size );
-    return blocks.x * blocks.y * blocks.z * bytesPerBlock( f );
+    return (size_t)blocks.x * (size_t)blocks.y * (size_t)blocks.z * (size_t)bytesPerBlock( f );
 }
 
 /* Access a block in an array based volume by coordinates. Returns a pointer to the first element */
@@ -236,7 +292,9 @@ voxel( voxelmap_t* v, uint32_t x, uint32_t y, uint32_t z ) {
     ivec3_32_t block =blockPosition( v->format, ivec3_32( x, y, z ) );
     //size_t offset =( v->blocks.z * v->blocks.y * block.x + v->blocks.z * block.y + block.z ) ;
     // CUDA's textures use column-major order
-    size_t offset =( v->blocks.x * v->blocks.y * block.z + v->blocks.x * block.y + block.x ) ; 
+    size_t offset =( (size_t)v->blocks.x * (size_t)v->blocks.y * (size_t)block.z 
+            + (size_t)v->blocks.x * (size_t)block.y 
+            + (size_t)block.x ) ; 
     return (void*)((char*)v->data + offset * bytes_per_block );
 }
 
@@ -261,7 +319,7 @@ voxelmapFill( voxelmap_t* v, void *value ) {
 }
 
 /* Pack an rgba-4float value into an arbitrarily formatted voxelmap */
-VOXOWL_HOST_AND_DEVICE 
+VOXOWL_HOST 
 void 
 voxelmapPack( voxelmap_t* v, ivec3_32_t position, glm::vec4 rgba ) {
    void *block_ptr =voxel( v, position );
@@ -271,11 +329,16 @@ voxelmapPack( voxelmap_t* v, ivec3_32_t position, glm::vec4 rgba ) {
             packRGBA_UINT32( (uint32_t*)block_ptr, rgba );
             break;
         case VOXEL_INTENSITY_UINT8:
-            packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba ) );
+            packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba, true ) );
+            break;
+        case VOXEL_DENSITY_UINT8:
+            rgba.a = rgba.a < .001f ? 0.f : 1.f;
+            rgba *= rgba.a;
+            packINTENSITY_UINT8( (uint8_t*)block_ptr, intensityRGBA_linear( rgba, false ) );
             break;
         case VOXEL_BITMAP_UINT8: {
             unsigned bit_offs =blockOffset( v->format, position );
-            packBIT_UINT8( (uint8_t*)block_ptr, bit_offs, thresholdRGBA_linear( rgba ) );
+            packBIT_UINT8( (uint8_t*)block_ptr, bit_offs, thresholdRGBA_linear( rgba, true ) );
             break;
         }
         case VOXEL_RGB24_8ALPHA1_UINT32: {
@@ -283,15 +346,34 @@ voxelmapPack( voxelmap_t* v, ivec3_32_t position, glm::vec4 rgba ) {
             packRGBA_RGB24_8ALPHA1_UINT32( (uint32_t*)block_ptr, bit_offs, rgba );
             break;
         }
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16: {
+            unsigned bit_offs =blockOffset( v->format, position );
+            packRGBA_INTENSITY8_8ALPHA1_UINT16( (uint16_t*)block_ptr, bit_offs, rgba );
+            break;
+        }
+        case VOXEL_DENSITY8_8ALPHA1_UINT16: {
+            unsigned bit_offs =blockOffset( v->format, position );
+            rgba.a = rgba.a < .001f ? 0.f : 1.f;
+            packRGBA_INTENSITY8_8ALPHA1_UINT16( (uint16_t*)block_ptr, bit_offs, rgba );
+            break;
+        }
         case VOXEL_RGB24A1_UINT32:
             packRGB24A1_UINT32( (uint32_t*)block_ptr, rgba );
             break;
-
+        case VOXEL_RGB24A3_UINT32:
+            packRGB24A3_UINT32( (uint32_t*)block_ptr, rgba );
+            break;
+        case VOXEL_INTENSITY8_UINT16:
+            packINTENSITY8_UINT16( (uint16_t*)block_ptr, intensityRGBA_linear( rgba, true ) );
+            break;
+        case VOXEL_DENSITY8_UINT16:
+            packINTENSITY8_UINT16( (uint16_t*)block_ptr, intensityRGBA_linear( rgba, false ) );
+            break;
    }
 }
 
 /* Unpack an rgba-4float value from an arbitrarily formatted  voxelmap */
-VOXOWL_HOST_AND_DEVICE 
+VOXOWL_HOST 
 glm::vec4 
 voxelmapUnpack( voxelmap_t* v, ivec3_32_t position ) {
    void *block_ptr =voxel( v, position );
@@ -304,18 +386,43 @@ voxelmapUnpack( voxelmap_t* v, ivec3_32_t position ) {
             rgba =glm::vec4( unpackINTENSITY_UINT8( *((uint8_t*)block_ptr) ) );
             rgba.a =rgba.r != 0.f;
             break;
+        case VOXEL_DENSITY_UINT8:
+            rgba =glm::vec4( unpackINTENSITY_UINT8( *((uint8_t*)block_ptr) ) );
+            break;
         case VOXEL_BITMAP_UINT8: {
             unsigned bit_offs =blockOffset( v->format, position );
             rgba =glm::vec4( (int)unpackBIT_UINT8( *((uint8_t*)block_ptr), bit_offs ) );
             break;
         }
         case VOXEL_RGB24_8ALPHA1_UINT32: {
-            size_t bit_offs =position.z % voxelsPerBlock( v->format );
+            unsigned bit_offs =blockOffset( v->format, position );
             rgba =unpackRGBA_RGB24_8ALPHA1_UINT32( *((uint32_t*)block_ptr), bit_offs );
+            break;
+        }
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16: {
+            unsigned bit_offs =blockOffset( v->format, position );
+            rgba =unpackRGBA_INTENSITY8_8ALPHA1_UINT16( *((uint16_t*)block_ptr), bit_offs );
+            break;
+        }
+        case VOXEL_DENSITY8_8ALPHA1_UINT16: {
+            unsigned bit_offs =blockOffset( v->format, position );
+            rgba =unpackRGBA_INTENSITY8_8ALPHA1_UINT16( *((uint16_t*)block_ptr), bit_offs );
+            rgba = rgba * rgba.a;
+            rgba.a =rgba.r;
             break;
         }
         case VOXEL_RGB24A1_UINT32:
             rgba =unpackRGB24A1_UINT32( *((uint32_t*)block_ptr) );
+            break;
+        case VOXEL_RGB24A3_UINT32:
+            rgba =unpackRGB24A3_UINT32( *((uint32_t*)block_ptr) );
+            break;
+        case VOXEL_INTENSITY8_UINT16:
+            rgba =glm::vec4( unpackINTENSITY8_UINT16( *((uint16_t*)block_ptr ) ) );
+            rgba.a =rgba.r != 0.f;
+            break;
+        case VOXEL_DENSITY8_UINT16:
+            rgba =glm::vec4( unpackINTENSITY8_UINT16( *((uint16_t*)block_ptr ) ) );
             break;
         
    }
@@ -424,15 +531,29 @@ unpackBIT_UINT8( uint8_t src, int offset ) {
    the bit number [0,7] of the alpha channel starting from the LSB
    The given RGB value will be averaged against any of the existing elements with alpha=1
    The A value will be applied a threshold at 0.5 */
-VOXOWL_HOST_AND_DEVICE 
+VOXOWL_HOST 
 void 
 packRGBA_RGB24_8ALPHA1_UINT32( uint32_t *rgb24_8alpha1, int offset, glm::vec4 rgba ) {
     uint8_t lower_bits = (uint8_t)*rgb24_8alpha1;
-    packBIT_UINT8( &lower_bits, offset, rgba.a >= 0.5 ); 
-    *rgb24_8alpha1 =(uint8_t)lower_bits | 
-        ((uint32_t)(rgba.r * 255.f) << 24) |
-        ((uint32_t)(rgba.g * 255.f) << 16) |
-        ((uint32_t)(rgba.b * 255.f) << 8);
+    int count =BitsSetTable256[lower_bits];
+    glm::vec3 color(0);
+    if( count ) {
+        color = glm::vec3 (
+            (float)(((*rgb24_8alpha1) >> 24) & 0xff) / 255.f,
+            (float)(((*rgb24_8alpha1) >> 16) & 0xff) / 255.f,
+            (float)(((*rgb24_8alpha1) >> 8) & 0xff) / 255.f );
+    }
+    if( rgba.a >= 0.5f ) {
+        color *= (float)count;
+        color += glm::vec3( rgba );
+        color /= (float)(count+1);
+    }
+
+    packBIT_UINT8( &lower_bits, offset, rgba.a >= 0.5f ); 
+    *rgb24_8alpha1 =(uint32_t)lower_bits | 
+        ((uint32_t)(color.r * 255.f) << 24) |
+        ((uint32_t)(color.g * 255.f) << 16) |
+        ((uint32_t)(color.b * 255.f) << 8);
     
 }
 
@@ -463,13 +584,63 @@ packRGB24_8ALPHA1_UINT32( uint32_t *dst, glm::vec3 rgb, bool alpha[8] ) {
 /* Unpack one RGB-3float and a alpha bitmap [0,7] from one uint32 using rgb24_8alpha1 encoding */
 VOXOWL_HOST_AND_DEVICE 
 glm::vec3 
-unpackRGB24_8ALPHA1_UINT32( bool alpha[8], uint32_t rgb24_8alpha1 ) {
+unpackRGB24_8ALPHA1_UINT32( bool alpha[8], uint16_t rgb24_8alpha1 ) {
     uint8_t lower_bits = rgb24_8alpha1;
     unpackBITMAP_UINT8( alpha, lower_bits );
     return glm::vec3 (
         (float)((rgb24_8alpha1 >> 24) & 0xff) / 255.f,
         (float)((rgb24_8alpha1 >> 16) & 0xff) / 255.f,
         (float)((rgb24_8alpha1 >> 8) & 0xff) / 255.f );
+}
+
+/*! Pack a RGBA-4float value into a intensity8_8alpha1_uint16, where offset determines 
+   the bit number [0,7] of the alpha channel starting from the LSB. Color is discarded.
+   The given RGB value will be averaged against any of the existing elements with alpha=1
+   The A value will be applied a threshold at 0.5 */
+VOXOWL_HOST 
+void 
+packRGBA_INTENSITY8_8ALPHA1_UINT16( uint16_t *intensity8_8alpha1, int offset, glm::vec4 rgba ) {
+    uint8_t lower_bits = (uint8_t)*intensity8_8alpha1;
+    int count =BitsSetTable256[lower_bits];
+    float intensity =0;
+    if( count ) {
+        intensity =(float)((*intensity8_8alpha1 >> 8) & 0xff) / 255.f;
+    }
+    if( rgba.a >= 0.5f ) {
+        intensity *= (float)count;
+        intensity += intensityRGBA_linear( rgba, false );
+        intensity /= (float)(count+1);
+    }
+
+    packBIT_UINT8( &lower_bits, offset, rgba.a >= 0.5f ); 
+    *intensity8_8alpha1 =(uint8_t)lower_bits | ((uint16_t)(intensity * 255.f) << 8);
+}
+
+/* Unpack a RGBA-4float from a intensity8_8alpha1_uint16, where offset determines the bit number [0,7] of the alpha channel */
+VOXOWL_HOST_AND_DEVICE 
+glm::vec4 
+unpackRGBA_INTENSITY8_8ALPHA1_UINT16( uint16_t intensity8_8alpha1, int offset ) {
+    float intensity =(float)((intensity8_8alpha1 >> 8) & 0xff) / 255.f;
+    return glm::vec4 ( intensity, intensity, intensity, (float)unpackBIT_UINT8( intensity8_8alpha1, offset ) );
+}
+
+/*! Pack one intensity float and an alpha bitmap [0,7] into one uint16 using intensity8_8alpha1 encoding */
+VOXOWL_HOST_AND_DEVICE 
+void 
+packINTENSITY8_8ALPHA1_UINT16( uint16_t *dst, float intensity, bool alpha[8] ) {
+    uint8_t lower_bits;
+    packBITMAP_UINT8( &lower_bits, alpha );
+    *dst =(uint8_t)lower_bits | ((uint32_t)(intensity * 255.f) << 8);
+
+}
+
+/*! Unpack one intensity float and a alpha bitmap [0,7] from one uint16 using intensity8_8alpha1 encoding */
+VOXOWL_HOST_AND_DEVICE 
+float 
+unpackINTENSITY8_8ALPHA1_UINT16( bool alpha[8], uint16_t intensity8_8alpha1 ) {
+    uint8_t lower_bits = intensity8_8alpha1;
+    unpackBITMAP_UINT8( alpha, lower_bits );
+    return (float)((intensity8_8alpha1 >> 8) & 0xff) / 255.f;
 }
 
 /* Pack a RGBA-4float into a rgb24a1. The RGB components are packed in 8 bpc in the MSB's
@@ -498,6 +669,49 @@ unpackRGB24A1_UINT32( uint32_t rgb24a1 ) {
         (float)((rgb24a1 & 0x80) != 0) );
 }
 
+/*! Pack a RGBA-4float into a rgb24a3. The RGB components are packed in 8 bpc in the MSB's
+   The alpha is converted to 3 bits which are stored in bits 7-5 
+   Bits 0-4 (from LSB) are untouched */
+VOXOWL_HOST_AND_DEVICE 
+void 
+packRGB24A3_UINT32( uint32_t *dst, glm::vec4 rgba ) {
+    // Clear bits [5-31]
+    *dst &= 0x1F;
+    *dst = *dst | 
+        ((uint32_t)(rgba.r * 255) << 24) |
+        ((uint32_t)(rgba.g * 255) << 16) |
+        ((uint32_t)(rgba.b * 255) << 8) |
+        (uint32_t)(rgba.a * 7) << 5;
+
+}
+
+/*! Unpack a RGBA-4float from a rgb24a3 type. Bits 7-5 contain the 3-bit alpha. Bits 0-4 (from LSB) are untouched. */
+VOXOWL_HOST_AND_DEVICE 
+glm::vec4 
+unpackRGB24A3_UINT32( uint32_t rgb24a3 ) {
+    return glm::vec4(
+        (float)((rgb24a3 >> 24) & 0xff) / 255.f,
+        (float)((rgb24a3 >> 16) & 0xff) / 255.f,
+        (float)((rgb24a3 >> 8) & 0xff) / 255.f,
+        (float)((rgb24a3 >> 5) & 0x7) / 7.f ) ;
+
+}
+
+/*! Pack an 8-bit grayscale intensity to an uint16 */
+VOXOWL_HOST_AND_DEVICE 
+void 
+packINTENSITY8_UINT16( uint16_t* dst, float intensity ) {
+    *dst &= 0xff;
+    *dst = *dst | ((uint16_t)(intensity * 255)) << 8;
+}
+
+/*! Unpack an 8-bit grayscale intensity from an uint16 */
+VOXOWL_HOST_AND_DEVICE 
+float 
+unpackINTENSITY8_UINT16( uint16_t intensity ) {
+    return (float)((intensity >> 8) & 0xff) / 255.f;
+}
+
 /*
  * Misc functions
  */
@@ -506,17 +720,17 @@ unpackRGB24A1_UINT32( uint32_t rgb24a1 ) {
 /* Calculate the perceived intensity of an RGBA quadruple. Values are assumed to be linear */
 VOXOWL_HOST_AND_DEVICE 
 float 
-intensityRGBA_linear( glm::vec4 rgba ) {
+intensityRGBA_linear( glm::vec4 rgba, bool multiply_alpha ) {
     // We use CIE 1931 weights and alpha as absolute weight using the following formula
     // Y = A( 0.2126R + 0.7152G + 0.0722B )
-    return ( rgba.a * ( 0.2126f * rgba.r + 0.7152f * rgba.g + 0.0722 * rgba.b ) );
+    return ( (multiply_alpha ? rgba.a : 1.f) * ( 0.2126f * rgba.r + 0.7152f * rgba.g + 0.0722 * rgba.b ) );
 }
 
 /* Calculate the perceived intensity of an RGBA quadruple. Values are assumed to be linear */
 VOXOWL_HOST_AND_DEVICE 
 uint8_t 
-intensityRGBA_UINT32_linear( uint32_t rgba ) {
-    return intensityRGBA_linear( unpackRGBA_UINT32( rgba ) ) / 255.f;
+intensityRGBA_UINT32_linear( uint32_t rgba, bool multiply_alpha ) {
+    return intensityRGBA_linear( unpackRGBA_UINT32( rgba ), multiply_alpha ) / 255.f;
 }
 
 /* Calculate the perceived intensity of an RGBA quadruple by fast, inaccurate conversion. Values are assumed to be linear */
@@ -536,14 +750,14 @@ intensityRGBA_UINT32_fastlinear( uint32_t rgba ) {
 VOXOWL_HOST_AND_DEVICE 
 bool 
 thresholdRGBA_linear( glm::vec4 rgba, float threshold ) {
-    return intensityRGBA_linear( rgba ) >= threshold;
+    return intensityRGBA_linear( rgba, true ) >= threshold;
 }
 
 /* Calculate if a RGBA quadruple is 'black' (false) or 'white' depending on the given treshold [0,1] */
 VOXOWL_HOST_AND_DEVICE 
 bool 
 thresholdRGBA_UINT32_linear( uint32_t rgba, float threshold ) {
-    return intensityRGBA_UINT32_linear( rgba ) >= (255.f * threshold);
+    return intensityRGBA_UINT32_linear( rgba, true ) >= (255.f * threshold);
 }
 
 /* Calculate if a RGBA quadruple is 'black' (false) or 'white' using fast, inaccurate conversion, depending on the given treshold [0,255] */
@@ -572,12 +786,24 @@ strVoxelFormat( voxel_format_t f ) {
             return "RGBA_UINT32";
         case VOXEL_INTENSITY_UINT8:
             return "INTENSITY_UINT8";
+        case VOXEL_DENSITY_UINT8:
+            return "DENSITY_UINT8";
         case VOXEL_BITMAP_UINT8:
             return "BITMAP_UINT8";
         case VOXEL_RGB24_8ALPHA1_UINT32:
             return "RGB24_8ALPHA1_UINT32";
         case VOXEL_RGB24A1_UINT32:
             return "RGB24A1_UINT32";
+        case VOXEL_RGB24A3_UINT32:
+            return "RGB24A3_UINT32";
+        case VOXEL_INTENSITY8_UINT16:
+            return "INTENSITY8_UINT16";
+        case VOXEL_DENSITY8_UINT16:
+            return "DTENSITY8_UINT16";
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+            return "INTENSITY8_8ALPHA1_UINT16";
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
+            return "DTENSITY8_8ALPHA1_UINT16";
     }
     return "";
 }

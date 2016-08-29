@@ -6,14 +6,14 @@
 #define SVMM_MAGIC1 'V'
 #define SVMM_MAGIC2 's'
 
-#define SVMM_TERMINAL_BIT_MASK 0x40
-#define SVMM_STUB_BIT_MASK 0x20
-#define SVMM_OFFSET_BITS 5
-#define SVMM_OFFSET_BITS_MASK 0x1f
+#define SVMM_TERMINAL_BIT_MASK 0x10
+//#define SVMM_STUB_BIT_MASK 0x20
+#define SVMM_OFFSET_BITS 4
+#define SVMM_OFFSET_BITS_MASK 0xf
 #define SVMM_SUBBLOCK_WIDTH 2
 
 typedef struct {
-    uint32_t next;
+    uint64_t next;
     uint32_t mipmap_factor;
     uint32_t block_count;
     voxel_format_t format;
@@ -49,6 +49,7 @@ typedef struct {
     unsigned int rootwidth;
     float delta;
     bool bitmapBaselevel;
+    bool shiftBlockwidth;
     voxel_format_t format;
 } svmm_encode_opts_t;
 
@@ -63,6 +64,7 @@ VOXOWL_HOST ssize_t svmmEncodeFile( const char* filename, voxelmap_t* uncompress
 VOXOWL_HOST void svmmSetOpts( svmm_encode_opts_t *opts, 
                               voxelmap_t* uncompressed, 
                               int quality );
+VOXOWL_HOST voxel_format_t svmmFormat( voxel_format_t f );
 
 VOXOWL_HOST int svmmFree( svmipmap_t* );
 
@@ -82,7 +84,7 @@ VOXOWL_HOST bool svmmTest( voxelmap_t* uncompressed, int quality );
 
 // Utility functions
 
-VOXOWL_HOST_AND_DEVICE bool isTerminal( uint32_t rgb24a1 );
-VOXOWL_HOST_AND_DEVICE void setTerminal( uint32_t* rgb24a1, bool terminal );
-VOXOWL_HOST_AND_DEVICE bool isStub( uint32_t rgb24a1 );
-VOXOWL_HOST_AND_DEVICE void setStub( uint32_t *rgb24a1, bool stub );
+VOXOWL_HOST_AND_DEVICE bool isTerminal( uint8_t lower_bits );
+VOXOWL_HOST_AND_DEVICE void setTerminal( uint8_t* lower_bits, bool terminal );
+//VOXOWL_HOST_AND_DEVICE bool isStub( uint32_t rgb24a1 );
+//VOXOWL_HOST_AND_DEVICE void setStub( uint32_t *rgb24a1, bool stub );

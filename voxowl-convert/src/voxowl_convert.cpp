@@ -208,7 +208,9 @@ convert( convert_settings_t s ) {
             opts.blockwidth = s.set_blockwidth;
         if( s.set_rootwidth )
             opts.rootwidth = s.set_rootwidth;
+        opts.shiftBlockwidth =s.set_step_blockwidth;
         opts.bitmapBaselevel = s.set_baselevel_bitmap;
+        opts.format =svmmFormat( s.voxel_format );
 
         if( !s.silent )
             printf( "Encoding svmm: blockwidth=%d, rootwidth=%d, delta=%f, quality=%d, bitmap_baselevel=%d, format=%s\n",

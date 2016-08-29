@@ -6,7 +6,7 @@
    - The largest direction in the size vector will measure 1.0 in the box */
 VOXOWL_HOST_AND_DEVICE
 box_t
-volumeSizeToAABB( glm::ivec3 size ) {
+volumeSizeToAABB( const glm::ivec3 &size ) {
     int largest = max( size.x, max( size.y, size.z ) );
     largest *=2;
     box_t b;
@@ -22,30 +22,39 @@ volumeSizeToAABB( glm::ivec3 size ) {
    Additionally, the entry and exit constants tmin and tmax are set */
 VOXOWL_HOST_AND_DEVICE
 bool
-rayAABBIntersect( const ray_t &r, const box_t& b, double& tmin, double& tmax ) {
+rayAABBIntersect( const ray_t &r, const box_t& b, float& tmin, float& tmax ) {
     glm::vec3 n_inv = glm::vec3( 
         1.f / r.direction.x,
         1.f / r.direction.y,
         1.f / r.direction.z );
-    double tx1 = (b.min.x - r.origin.x)*n_inv.x;
-    double tx2 = (b.max.x - r.origin.x)*n_inv.x;
+    float tx1 = (b.min.x - r.origin.x)*n_inv.x;
+    float tx2 = (b.max.x - r.origin.x)*n_inv.x;
  
-    tmin = min(tx1, tx2);
-    tmax = max(tx1, tx2);
+    tmin = fminf(tx1, tx2);
+    tmax = fmaxf(tx1, tx2);
  
-    double ty1 = (b.min.y - r.origin.y)*n_inv.y;
-    double ty2 = (b.max.y - r.origin.y)*n_inv.y;
+    float ty1 = (b.min.y - r.origin.y)*n_inv.y;
+    float ty2 = (b.max.y - r.origin.y)*n_inv.y;
  
-    tmin = max(tmin, min(ty1, ty2));
-    tmax = min(tmax, max(ty1, ty2));
+    tmin = fmaxf(tmin, fminf(ty1, ty2));
+    tmax = fminf(tmax, fmaxf(ty1, ty2));
     
-    double tz1 = (b.min.z - r.origin.z)*n_inv.z;
-    double tz2 = (b.max.z - r.origin.z)*n_inv.z;
+    float tz1 = (b.min.z - r.origin.z)*n_inv.z;
+    float tz2 = (b.max.z - r.origin.z)*n_inv.z;
  
-    tmin = max(tmin, min(tz1, tz2));
-    tmax = min(tmax, max(tz1, tz2));
+    tmin = fmaxf(tmin, fminf(tz1, tz2));
+    tmax = fminf(tmax, fmaxf(tz1, tz2));
  
     return tmax >= tmin;
+}
+
+VOXOWL_HOST_AND_DEVICE
+void
+blendF2B_fast( const glm::vec4 &src, glm::vec4 &dst ) {
+    dst.r = dst.a*(src.r * src.a) + dst.r;
+    dst.g = dst.a*(src.g * src.a) + dst.g;
+    dst.b = dst.a*(src.b * src.a) + dst.b;
+    dst.a = (1.f - src.a) * dst.a;
 }
 
 /* Set projection planes and view matrix using the given model, view and projection matrices 
@@ -64,16 +73,19 @@ raycastSetMatrices( raycastInfo_t* raycast_info, glm::mat4 mat_model, glm::mat4 
     // Setup the arguments to the raycaster
     raycast_info->upperLeftNormal =glm::normalize( glm::vec3( left, top, -near ) );
     raycast_info->upperRightNormal =glm::normalize( glm::vec3( right, top, -near ) );
-    raycast_info->lowerLeftNormal =glm::normalize( glm::vec3( left, bottom, -near ) );
-    raycast_info->lowerRightNormal =glm::normalize( glm::vec3( right, bottom, -near ) );
+    glm::vec3 lowerLeftNormal =glm::normalize( glm::vec3( left, bottom, -near ) );
+    glm::vec3 lowerRightNormal =glm::normalize( glm::vec3( right, bottom, -near ) );
     
 
     // Calculate the ray-normal interpolation constants
-    raycast_info->invHeight = 1.f / (float)y_size;
+    float invHeight = 1.f / (float)y_size;
     raycast_info->invWidth = 1.f / (float)x_size;
 
-    raycast_info->leftNormalYDelta = (raycast_info->lowerLeftNormal - raycast_info->upperLeftNormal) * raycast_info->invHeight;
-    raycast_info->rightNormalYDelta =(raycast_info->lowerRightNormal - raycast_info->upperRightNormal) * raycast_info->invHeight;
+    raycast_info->leftNormalYDelta = (lowerLeftNormal - raycast_info->upperLeftNormal) * invHeight;
+    raycast_info->rightNormalYDelta =(lowerRightNormal - raycast_info->upperRightNormal) * invHeight;
+
+    // Compute the fragment width per unit in the Z-direction (assuming square pixels!)
+    raycast_info->fragmentWidthWorldDelta =glm::length(raycast_info->leftNormalYDelta) / near;
 
     // Compute the inverse modelview matrix and use it the compute the ray origin
     glm::mat4 mat_modelview =mat_view * mat_model;
@@ -82,4 +94,9 @@ raycastSetMatrices( raycastInfo_t* raycast_info, glm::mat4 mat_model, glm::mat4 
     raycast_info->origin = glm::vec3( mat_inv_modelview * glm::vec4(0,0,0,1) );
     raycast_info->matModelView =mat_modelview;
     raycast_info->matInvModelView = mat_inv_modelview;
+
+    // TEST
+    glm::vec3 vnear =glm::vec3( mat_inv_modelview * glm::vec4(0,0,-near,1) );
+    raycast_info->fragmentWidthDelta =glm::length(raycast_info->leftNormalYDelta) / glm::distance( raycast_info->origin, vnear );
+    
 }

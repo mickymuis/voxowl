@@ -15,13 +15,27 @@ typedef enum {
     VOXEL_RGBA_UINT32,
     /*! One-dimensional voxel type, 0x0 is transparent, stored as one 8 bits integer */
     VOXEL_INTENSITY_UINT8,
+    /*! One-dimensional voxel type, each value n gives rgba(n,n,n,n), stored as one 8 bits integer */
+    VOXEL_DENSITY_UINT8,
     /*! Binary voxel type, block of 8 voxels stored in one uint8 */
     VOXEL_BITMAP_UINT8,
     /*! Stores 8 voxels with a shared RGB value in the 24 most significant bits 
        and 1 bit alpha for each voxel in the lower bits. 4 bytes blocksize */
     VOXEL_RGB24_8ALPHA1_UINT32,
     /*! Stores RGB values in the 24 most significant bits and a one bit alpha at bit 7. The lower 7 bits are untouched. */
-    VOXEL_RGB24A1_UINT32
+    VOXEL_RGB24A1_UINT32,
+    /*! Stores RGB values in the 24 most significant bits and a three bit alpha at bits 7-5. The lower 5 bits are untouched. */
+    VOXEL_RGB24A3_UINT32,
+    /*! Stores 8 bits intensity in a 16 bits integer. The lower 8 bits are untouched */
+    VOXEL_INTENSITY8_UINT16,
+    /*! Stores 8 bits density in a 16 bits integer. The lower 8 bits are untouched */
+    VOXEL_DENSITY8_UINT16,
+    /*! Stores 8 voxels with a shared INTENSITY value in the 8 most significant bits 
+       and 1 bit alpha for each voxel in the lower bits. 2 bytes blocksize */
+    VOXEL_INTENSITY8_8ALPHA1_UINT16,
+    /*! Stores 8 voxels with a shared DENSITY value in the 8 most significant bits 
+       and 1 bit alpha for each voxel in the lower bits. 2 bytes blocksize */
+    VOXEL_DENSITY8_8ALPHA1_UINT16
 }
  voxel_format_t;
 
@@ -87,10 +101,10 @@ VOXOWL_HOST_AND_DEVICE void voxelmapFill( voxelmap_t*, void *value );
 */
 
 /*! Pack an rgba-4float value into an arbitrarily formatted  voxelmap */
-VOXOWL_HOST_AND_DEVICE void voxelmapPack( voxelmap_t*, ivec3_32_t position, glm::vec4 rgba );
+VOXOWL_HOST void voxelmapPack( voxelmap_t*, ivec3_32_t position, glm::vec4 rgba );
 
 /*! Unpack an rgba-4float value from an arbitrarily formatted  voxelmap */
-VOXOWL_HOST_AND_DEVICE glm::vec4 voxelmapUnpack( voxelmap_t*, ivec3_32_t position );
+VOXOWL_HOST glm::vec4 voxelmapUnpack( voxelmap_t*, ivec3_32_t position );
 
 /*! Pack an rgba-4float value to an uint32 */
 VOXOWL_HOST_AND_DEVICE void packRGBA_UINT32( uint32_t* rgba, const glm::vec4& v );
@@ -126,7 +140,7 @@ VOXOWL_HOST_AND_DEVICE bool unpackBIT_UINT8( uint8_t src, int offset );
    the bit number [0,7] of the alpha channel starting from the LSB
    The given RGB value will be averaged against any of the existing elements with alpha=1
    The A value will be applied a threshold at 0.5 */
-VOXOWL_HOST_AND_DEVICE void packRGBA_RGB24_8ALPHA1_UINT32( uint32_t *rgb24_8alpha1, int offset, glm::vec4 rgba );
+VOXOWL_HOST void packRGBA_RGB24_8ALPHA1_UINT32( uint32_t *rgb24_8alpha1, int offset, glm::vec4 rgba );
 
 /* Unpack a RGBA-4float from a rgb24_8alpha_uint32, where offset determines the bit number [0,7] of the alpha channel */
 VOXOWL_HOST_AND_DEVICE glm::vec4 unpackRGBA_RGB24_8ALPHA1_UINT32( uint32_t rgb24_8alpha1, int offset );
@@ -137,23 +151,52 @@ VOXOWL_HOST_AND_DEVICE void packRGB24_8ALPHA1_UINT32( uint32_t *dst, glm::vec3 r
 /*! Unpack one RGB-3float and a alpha bitmap [0,7] from one uint32 using rgb24_8alpha1 encoding */
 VOXOWL_HOST_AND_DEVICE glm::vec3 unpackRGB24_8ALPHA1_UINT32( bool alpha[8], uint32_t rgb24_8alpha1 );
 
+/*! Pack a RGBA-4float value into a intensity8_8alpha1_uint16, where offset determines 
+   the bit number [0,7] of the alpha channel starting from the LSB. Color is discarded.
+   The given RGB value will be averaged against any of the existing elements with alpha=1
+   The A value will be applied a threshold at 0.5 */
+VOXOWL_HOST void packRGBA_INTENSITY8_8ALPHA1_UINT16( uint16_t *intensity8_8alpha1, int offset, glm::vec4 rgba );
+
+/* Unpack a RGBA-4float from a intensity8_8alpha_uint16, where offset determines the bit number [0,7] of the alpha channel */
+VOXOWL_HOST_AND_DEVICE glm::vec4 unpackRGBA_INTENSITY8_8ALPHA1_UINT16( uint16_t intensity8_8alpha1, int offset );
+
+/*! Pack one intensity float and an alpha bitmap [0,7] into one uint16 using intensity8_8alpha1 encoding */
+VOXOWL_HOST_AND_DEVICE void packINTENSITY8_8ALPHA1_UINT16( uint16_t *dst, float intensity, bool alpha[8] );
+
+/*! Unpack one intensity float and a alpha bitmap [0,7] from one uint32 using intensity8_8alpha1 encoding */
+VOXOWL_HOST_AND_DEVICE float unpackINTENSITY8_8ALPHA1_UINT16( bool alpha[8], uint16_t intensity8_8alpha1 );
+
 /*! Pack a RGBA-4float into a rgb24a1. The RGB components are packed in 8 bpc in the MSB's
    A threshold is applied to the alpha value ( >= 0.5 ) and is packed into the 7th bit. 
    Bits 0-6 (from LSB) are untouched */
 VOXOWL_HOST_AND_DEVICE void packRGB24A1_UINT32( uint32_t *dst, glm::vec4 rgba );
 
-/*! Unpack a RGBA-4float from a rgb24a1 type. Bit 7 contains the one-bit alpha. Bits 0-6 (from LSB) are untoched. */
+/*! Unpack a RGBA-4float from a rgb24a1 type. Bit 7 contains the one-bit alpha. Bits 0-6 (from LSB) are untouched. */
 VOXOWL_HOST_AND_DEVICE glm::vec4 unpackRGB24A1_UINT32( uint32_t rgb24a1 );
+
+/*! Pack a RGBA-4float into a rgb24a3. The RGB components are packed in 8 bpc in the MSB's
+   The alpha is converted to 3 bits which are stored in bits 7-5 
+   Bits 0-4 (from LSB) are untouched */
+VOXOWL_HOST_AND_DEVICE void packRGB24A3_UINT32( uint32_t *dst, glm::vec4 rgba );
+
+/*! Unpack a RGBA-4float from a rgb24a3 type. Bits 7-5 contain the 3-bit alpha. Bits 0-4 (from LSB) are untouched. */
+VOXOWL_HOST_AND_DEVICE glm::vec4 unpackRGB24A3_UINT32( uint32_t rgb24a3 );
+
+/*! Pack an 8-bit grayscale intensity to an uint16 */
+VOXOWL_HOST_AND_DEVICE void packINTENSITY8_UINT16( uint16_t* dst, float intensity );
+
+/*! Unpack an 8-bit grayscale intensity from an uint16 */
+VOXOWL_HOST_AND_DEVICE float unpackINTENSITY8_UINT16( uint16_t intensity );
 
 /*
  * Misc functions
  */
 
 /*! Calculate the perceived intensity of an RGBA quadruple. Values are assumed to be linear */
-VOXOWL_HOST_AND_DEVICE float intensityRGBA_linear( glm::vec4 rgba );
+VOXOWL_HOST_AND_DEVICE float intensityRGBA_linear( glm::vec4 rgba, bool multiply_alpha );
 
 /*! Calculate the perceived intensity of an RGBA quadruple. Values are assumed to be linear */
-VOXOWL_HOST_AND_DEVICE uint8_t intensityRGBA_UINT32_linear( uint32_t rgba );
+VOXOWL_HOST_AND_DEVICE uint8_t intensityRGBA_UINT32_linear( uint32_t rgba, bool multiply_alpha );
 
 /*! Calculate the perceived intensity of an RGBA quadruple by fast, inaccurate conversion. Values are assumed to be linear */
 VOXOWL_HOST_AND_DEVICE uint8_t intensityRGBA_UINT32_fastlinear( uint32_t rgba );
