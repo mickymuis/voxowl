@@ -64,6 +64,7 @@ VOXOWL_HOST ssize_t svmmEncodeFile( const char* filename, voxelmap_t* uncompress
 VOXOWL_HOST void svmmSetOpts( svmm_encode_opts_t *opts, 
                               voxelmap_t* uncompressed, 
                               int quality );
+VOXOWL_HOST voxel_format_t svmmFormat( voxel_format_t f );
 
 VOXOWL_HOST int svmmFree( svmipmap_t* );
 

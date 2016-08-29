@@ -54,6 +54,7 @@ link_directories()
 cuda_add_executable(
     voxowl
     src/main.cpp
+    src/testing.cpp
     src/object.cpp
     src/packetbuffer.cpp
     src/network.cpp

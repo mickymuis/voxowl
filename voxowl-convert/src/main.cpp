@@ -21,13 +21,17 @@ usage: %s input output [-iofqwrcsv]\n \
 \t -f \t Force pixel format to be used, either one of:\n \
 \t\t\t rgba32\n \
 \t\t\t intensity8\n \
+\t\t\t density8\n \
 \t\t\t bitmap8\n \
 \t\t\t rgb24_8alpha1\n \
-\t    \t When svmm is used, only 'rgba32' and 'intensity8' can be used\n \
+\t\t\t intensity8_8alpha1 \n \
+\t\t\t density8_8alpha1 \n \
+\t    \t When svmm is used, only 'rgba32', 'density8' and 'intensity8' can be used\n \
 \t -q \t Quality [0-100] when compressing (svmm)\n \
 \t -w \t Set blockwidth (svmm)\n \
+\t -W \t Step blockwidth by powers of two, starting at value specified by -w\n \
 \t -r \t Set rootwidth (svmm)\n \
-\t -c \t Enable chroma compression of the base-level (svmm)\n \
+\t -c \t Enable block compression of the base-level (svmm)\n \
 \t -s \t Silent, no output\n \
 \t -v \t Verify output if svmm is used\n \
 \t -h \t This information\n", exec );
@@ -65,10 +69,16 @@ parseVoxelFormat( voxel_format_t* format, char* str ) {
         *format =VOXEL_RGBA_UINT32;
     else if( strncasecmp( str, "intensity8", 10 ) == 0 )
         *format =VOXEL_INTENSITY_UINT8;
+    else if( strncasecmp( str, "density8", 8 ) == 0 )
+        *format =VOXEL_DENSITY_UINT8;
     else if( strncasecmp( str, "bitmap8", 7 ) == 0 )
         *format =VOXEL_BITMAP_UINT8;
     else if( strncasecmp( str, "rgb24_8alpha1", 13 ) == 0 )
         *format =VOXEL_RGB24_8ALPHA1_UINT32;
+    else if( strncasecmp( str, "intensity8_8alpha1", 18 ) == 0 )
+        *format =VOXEL_INTENSITY8_8ALPHA1_UINT16;
+    else if( strncasecmp( str, "density8_8alpha1", 16 ) == 0 )
+        *format =VOXEL_DENSITY8_8ALPHA1_UINT16;
     else
         return false;
     return true;
@@ -93,6 +103,7 @@ main( int argc, char **argv ) {
     s.silent =false;
     s.verify =false;
     s.set_baselevel_bitmap =false;
+    s.set_step_blockwidth =false;
     s.set_blockwidth =0;
     s.set_rootwidth =0;
     s.set_quality =75; // default quality?
@@ -134,6 +145,8 @@ main( int argc, char **argv ) {
             }
         } else if( strncmp( argv[i], "-c", 2 ) == 0 ) {
             s.set_baselevel_bitmap =true;
+        } else if( strncmp( argv[i], "-W", 2 ) == 0 ) {
+            s.set_step_blockwidth =true;
         } else if( strncmp( argv[i], "-s", 2 ) == 0 ) {
             s.silent =true;
         } else if( strncmp( argv[i], "-v", 2 ) == 0 ) {

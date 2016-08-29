@@ -49,9 +49,9 @@ voxelmapSafeCopy( voxelmap_t* dst, voxelmap_t* src ) {
     if( dst->format == src->format ) {
         memcpy( dst->data, src->data, voxelmapSize( dst ) );
     } else {
-        for( int x =0; x < dst->size.x; x++ )
+        for( int z =0; z < dst->size.z; z++ )
             for( int y =0; y < dst->size.y; y++ )
-                for( int z =0; z < dst->size.z; z++ ) {
+                for( int x =0; x < dst->size.x; x++ ) {
                     voxelmapPack( dst, ivec3_32( x, y, z ),
                         voxelmapUnpack( src, ivec3_32( x, y, z ) ) );
                 }
@@ -786,12 +786,24 @@ strVoxelFormat( voxel_format_t f ) {
             return "RGBA_UINT32";
         case VOXEL_INTENSITY_UINT8:
             return "INTENSITY_UINT8";
+        case VOXEL_DENSITY_UINT8:
+            return "DENSITY_UINT8";
         case VOXEL_BITMAP_UINT8:
             return "BITMAP_UINT8";
         case VOXEL_RGB24_8ALPHA1_UINT32:
             return "RGB24_8ALPHA1_UINT32";
         case VOXEL_RGB24A1_UINT32:
             return "RGB24A1_UINT32";
+        case VOXEL_RGB24A3_UINT32:
+            return "RGB24A3_UINT32";
+        case VOXEL_INTENSITY8_UINT16:
+            return "INTENSITY8_UINT16";
+        case VOXEL_DENSITY8_UINT16:
+            return "DTENSITY8_UINT16";
+        case VOXEL_INTENSITY8_8ALPHA1_UINT16:
+            return "INTENSITY8_8ALPHA1_UINT16";
+        case VOXEL_DENSITY8_8ALPHA1_UINT16:
+            return "DTENSITY8_8ALPHA1_UINT16";
     }
     return "";
 }

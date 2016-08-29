@@ -65,6 +65,7 @@ class RaycasterCUDA : public Renderer {
         bool setCudaErrorStr( cudaError_t code, const char *file, int line );
 
         volumeDevice_t d_volume;
+        svmipmapHost_t svmm_host;
         config_t last_config_volume;
 
         framebuffer_t framebuffer;

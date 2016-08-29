@@ -51,6 +51,8 @@ RaycasterCUDA::setCudaErrorStr(cudaError_t code, const char *file, int line )
           << " at line "
           << line;
 
+        std::cerr << s.str() << std::endl;
+
         setError( true, s.str() );
         return true;
     }
@@ -73,11 +75,12 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
     // Calculate screen coordinates
     const unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-    const unsigned int z = blockIdx.z * blockDim.z + threadIdx.z;
+    //const unsigned int z = blockIdx.z * blockDim.z + threadIdx.z;
 
     // We store the calculated fragment in shared memory
-    fragment_t* f =&frags[fragIndex( threadIdx.x, threadIdx.y, z, blockDim.x, blockDim.y )];
-    f->color =glm::vec4( 0,0,0,1 ); // Background color
+    //fragment_t* f =&frags[fragIndex( threadIdx.x, threadIdx.y, z, blockDim.x, blockDim.y )];
+    fragment_t* f =&frags[threadIdx.y * blockDim.x + threadIdx.x];
+    f->color =glm::vec4( 0,0,0,1 ); // Blend color
     f->normal =glm::vec3(0);
     f->position =glm::vec3(0,0,FAR); // Non-intersecting rays have 'infinite depth'
     f->hit =false;
@@ -125,11 +128,11 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
             case SVMM: {
                 float fragment_width =(raycast_info.fragmentWidthDelta * glm::length( r.direction * fmaxf( 0.f, tmin) ) ) / volume.voxel_width;
                 float fragment_width_step = raycast_info.fragmentWidthDelta / volume.voxel_width;
-                if( x == 500 && y == 400 )
-                    printf( "Fragment width: before %f ", fragment_width );
+    /*            if( x == 500 && y == 400 )
+                    printf( "Fragment width: before %f ", fragment_width );*/
                 svmmRaycast( *f, &volume.volume.svmm, volume.bounding_box, r, rayEntry, fragment_width, fragment_width_step );
-                if( x == 500 && y == 400 )
-                    printf( "after %f ", fragment_width );
+/*                if( x == 500 && y == 400 )
+                    printf( "after %f ", fragment_width );*/
                 break;
             }
             default:
@@ -179,7 +182,7 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
     }
     float depth =f->position.z;
 
-    __syncthreads();
+//    __syncthreads();
 
    /* if( z ) {
         f->color.a = 1.f - f->color.a;
@@ -201,7 +204,7 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
     f->color =blendF2B( framebuffer.clear_color, f->color );
     f->color.a = 1.f - f->color.a;
 
-    if( x % framebuffer.aaXSamples || y % framebuffer.aaYSamples )
+  /*  if( x % framebuffer.aaXSamples || y % framebuffer.aaYSamples )
         return;
 
     const float inv_samples =1.f / (float)(framebuffer.aaXSamples * framebuffer.aaYSamples);
@@ -216,26 +219,26 @@ computeFragment( raycastInfo_t raycast_info, volumeDevice_t volume, framebufferD
     for( int i =0; i < framebuffer.aaXSamples; i++ )
         for( int j =0; j < framebuffer.aaYSamples; j++ ) {
             frag.color +=frags[fragIndex(threadIdx.x + i, threadIdx.y + j,0, blockDim.x, blockDim.y)].color * inv_samples;
-        }
+        }*/
     
     // Write the color information to the framebuffer
     uint32_t rgba;
 //    packRGBA_UINT32( &rgba, glm::vec4( frag.position.z, frag.position.z, frag.position.z, 1.f ) );
-    packRGBA_UINT32( &rgba, frag.color  );
+    packRGBA_UINT32( &rgba, f->color  );
 
     // Workaround to be able to write to a 24bit buffer. Saves conversion later
-    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 24) & 0xFF), fb_color_surface, screen_x*3, screen_y, cudaBoundaryModeTrap );
-    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 16) & 0xFF), fb_color_surface, screen_x*3+1, screen_y, cudaBoundaryModeTrap );
-    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 8) & 0xFF), fb_color_surface, screen_x*3+2, screen_y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 24) & 0xFF), fb_color_surface, x*3, y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 16) & 0xFF), fb_color_surface, x*3+1, y, cudaBoundaryModeTrap );
+    surf2Dwrite<uint8_t>( (uint8_t)( (rgba >> 8) & 0xFF), fb_color_surface, x*3+2, y, cudaBoundaryModeTrap );
 
     // Write the normal and depth values using a regular 32 float4 texture
     float4 normal_depth;
     normal_depth.w =depth;
-    normal_depth.x =frag.normal.x;
-    normal_depth.y =frag.normal.y;
-    normal_depth.z =frag.normal.z;
+    normal_depth.x =f->normal.x;
+    normal_depth.y =f->normal.y;
+    normal_depth.z =f->normal.z;
 
-    surf2Dwrite<float4>( normal_depth, fb_normal_depth_surface, screen_x * sizeof( float4 ), screen_y, cudaBoundaryModeTrap ); 
+    surf2Dwrite<float4>( normal_depth, fb_normal_depth_surface, x * sizeof( float4 ), y, cudaBoundaryModeTrap ); 
 }
 
 VOXOWL_DEVICE
@@ -604,6 +607,7 @@ RaycasterCUDA::RaycasterCUDA( const char* name, Object* parent )
     if (!initSSAO() ) {
         fprintf( stderr, "initSSAO(): %s\n", errorString().c_str() ); 
     }
+    //cudaSetDevice( 1 );
     cudaEventCreate( &render_begin );
     cudaEventCreate( &render_finish );
     cudaEventCreate( &ssao_step );
@@ -713,7 +717,7 @@ RaycasterCUDA::initSVMM( svmipmap_t *svmm ) {
     svmipmapDevice_t *d_svmm =&d_volume.volume.svmm;
     bzero( d_svmm, sizeof( svmipmapDevice_t ) );
 
-    RETURN_IF_ERR( svmmCopyToDevice( d_svmm, svmm ) );
+    RETURN_IF_ERR( svmmCopyToDevice( d_svmm, svmm, &svmm_host ) );
     return true;
 }
 
@@ -736,11 +740,14 @@ RaycasterCUDA::beginRender() {
     const int width =getFramebuffer()->getWidth();
     const int height =getFramebuffer()->getHeight();
     const int ray_segments =1;
-    const dim3 blocksize(16, 16, ray_segments);
+    const dim3 blocksize(16, 16);
 
     // Reallocate and upload the volume
     if( last_config_volume != getVolume()->getConfiguration() ) {
         last_config_volume = getVolume()->getConfiguration();
+
+        printf( "reallocating volume\n" );
+//        freeVolumeMem();
 
         // First, determine the storage type
         VolumeVoxelmapStorageDetail* vol;
@@ -821,34 +828,34 @@ RaycasterCUDA::beginRender() {
                         getVolume()->modelMatrix(), 
                         getCamera()->getViewMatrix(), 
                         getCamera()->getProjMatrix(), 
-                        width * framebuffer.fb_d.aaXSamples, 
-                        height* framebuffer.fb_d.aaYSamples );
+                        width, 
+                        height );
 
     //float sample_width_delta = (d_volume.bounding_box.max.y * 2) / getVolume()->size().y;
-    printf( "Fragment width delta: %f (modelspace) %f (worldspace)\n", raycast_info.fragmentWidthDelta, raycast_info.fragmentWidthWorldDelta );
+    //printf( "Fragment width delta: %f (modelspace) %f (worldspace)\n", raycast_info.fragmentWidthDelta, raycast_info.fragmentWidthWorldDelta );
 
     // Divide the invidual fragments over N / blocksize blocks
     // Run the raycast kernel on the device
-    const dim3 numblocks( (width * framebuffer.fb_d.aaXSamples) / blocksize.x, 
-                          (height * framebuffer.fb_d.aaYSamples) / blocksize.y, 
-                          1 );
-    size_t sm_bytes =blocksize.x * blocksize.y * blocksize.z * sizeof( fragment_t );
+    const dim3 numblocks( width / blocksize.x, 
+                          height / blocksize.y );
+    size_t sm_bytes =blocksize.x * blocksize.y * sizeof( fragment_t );
     RETURN_IF_ERR( cudaBindSurfaceToArray( fb_color_surface, framebuffer.color_data ) );
     RETURN_IF_ERR( cudaBindSurfaceToArray( fb_normal_depth_surface, framebuffer.normal_depth_data ) );
     cudaFuncSetCacheConfig( computeFragment, cudaFuncCachePreferL1 );
     cudaEventRecord( render_begin );
     computeFragment<<<numblocks, blocksize, sm_bytes>>>( raycast_info, d_volume, framebuffer.fb_d );
     RETURN_IF_ERR( cudaGetLastError() );
-
+    RETURN_IF_ERR( cudaDeviceSynchronize() );
+ 
     // Run screen space deferred render passes
     dim3 blocksize_filter( 16, 16 );
     dim3 numblocks_filter( width / blocksize_filter.x, height / blocksize_filter.y );
-    raycastSetMatrices( &raycast_info, 
+/*    raycastSetMatrices( &raycast_info, 
                         getVolume()->modelMatrix(), 
                         getCamera()->getViewMatrix(), 
                         getCamera()->getProjMatrix(), 
                         width, 
-                        height );
+                        height );*/
     cudaEventRecord( ssna_step );
 
     if( isEnabled( FEATURE_SSNA ) ) {
@@ -913,7 +920,7 @@ RaycasterCUDA::synchronize() {
 
     int fps =1.f / (ms_raycast + ms_ssao + ms_aa + ms_lighting) * 1000.f;
 
-    printf( "Frame: raycast %f ms, %d fps)\n", ms_raycast, fps );
+//    printf( "Frame: raycast %f ms, %d fps)\n", ms_raycast, fps );
 
     PerformanceCounter::update( "raycast", ms_raycast );
     PerformanceCounter::update( "ssna", ms_ssna );
@@ -928,6 +935,14 @@ RaycasterCUDA::synchronize() {
 VOXOWL_HOST
 bool
 RaycasterCUDA::freeVolumeMem() {
+    /*RETURN_IF_ERR( cudaSetDevice( 1 ) );
+    cudaDeviceReset();
+    RETURN_IF_ERR( cudaSetDevice( 1 ) );
+    cudaFree(0);
+    return true;*/
+
+    //RETURN_IF_ERR( cudaDeviceSynchronize() );
+   // cudaThreadSynchronize();
 
     switch( d_volume.mode ) {
         case VOXELMAP:
@@ -938,10 +953,13 @@ RaycasterCUDA::freeVolumeMem() {
 
             break;
         case SVMM:
+            RETURN_IF_ERR( svmmFreeDevice( &svmm_host ) );
             break;
         default:
             break;
     }
+    bzero( &d_volume, sizeof( volumeDevice_t ) );
+    bzero( &svmm_host, sizeof( svmipmapHost_t ) );
     return true;
 }
 

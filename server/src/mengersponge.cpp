@@ -39,15 +39,15 @@ menger( voxelmap_t* V, glm::ivec3 size, glm::ivec3 cube, glm::ivec3 offset ) {
 }
 
 MengerSponge::MengerSponge( const char *name, Object *parent ) 
-    : VolumeSVMipmap( name, parent ) {
-    //: VolumeVoxelmap( name, parent ) {
+    //: VolumeSVMipmap( name, parent ) {
+    : VolumeVoxelmap( name, parent ) {
     depth =1;
     mode =COLORS_RGBA;
     //memset( &volume, 0, sizeof( voxelmap_t ) );
     volume.data =NULL;
     //makeSponge();
-    setSVMipmap( &volume_svmm );
-    //setVoxelmap( &volume );
+    //setSVMipmap( &volume_svmm );
+    setVoxelmap( &volume );
 }
 
 MengerSponge::~MengerSponge() {
@@ -91,19 +91,19 @@ MengerSponge::makeSponge() {
 
     ivec3_32_t size =ivec3_32( s );
 
-/*    printf( "Voxelmap %d size %zu bytes\n", size.x, voxelmapSize( VOXEL_INTENSITY_UINT8, size ) );
+    printf( "Voxelmap %d size %zu bytes\n", size.x, voxelmapSize( VOXEL_RGBA_UINT32, size ) );
 
     voxelmap_mapped_t vol_disk;
-    if( voxelmapCreateMapped( &vol_disk, "/local/s1407937/data/sphere128.vxwl", VOXEL_INTENSITY_UINT8, size ) == -1 ) {
+    if( voxelmapCreateMapped( &vol_disk, "/local/s1407937/data/output.vxwl", VOXEL_RGBA_UINT32, size ) == -1 ) {
         printf( "Error creating mmapped voxelmap\n" );
         return;
     }
-    voxelmapFromMapped( &volume, &vol_disk );*/
-    voxelmapCreate( &volume, VOXEL_DENSITY_UINT8, s, s, s );
+    voxelmapFromMapped( &volume, &vol_disk );
+//    voxelmapCreate( &volume, VOXEL_DENSITY_UINT8, s, s, s );
 //
     uint32_t black =0x0;
 //    uint8_t white =0xff;
-    voxelmapFill( &volume, &black );
+//    voxelmapFill( &volume, &black );
 
     // FOR SPHERE
     float maxDist =glm::min(size.x, glm::min( size.y, size.z ) ) / 2;
@@ -157,17 +157,17 @@ MengerSponge::makeSponge() {
     menger( &volume, glm_ivec3_32(size), glm_ivec3_32(size), glm::ivec3(0) );
 
     
-    svmm_encode_opts_t opts;
+/*    svmm_encode_opts_t opts;
     svmmSetOpts( &opts, &volume, 75 );
     opts.bitmapBaselevel =true;
     opts.shiftBlockwidth =false;
 //    opts.rootwidth =8;
     opts.blockwidth =4;
     bzero( &volume_svmm, sizeof( svmipmap_t ) );
-    svmmEncode( &volume_svmm, &volume, opts );
+    svmmEncode( &volume_svmm, &volume, opts );*/
 
 //    svmmDecode( &volume, &volume_svmm );
     
 //    svmmTest( &volume, 90 );
-//    voxelmapUnmap( &vol_disk );
+    voxelmapUnmap( &vol_disk );
 }

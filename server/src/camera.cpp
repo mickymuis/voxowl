@@ -21,7 +21,7 @@ Camera::~Camera() {}
 
 glm::mat4 Camera::getViewMatrix() {
     glm::vec3 p =glm::vec3( modelMatrix() * glm::vec4(0,0,0,1) );
-    printf( "Camera position (%f,%f,%f)\n", p.x, p.y, p.z );
+    //printf( "Camera position (%f,%f,%f)\n", p.x, p.y, p.z );
     return glm::lookAt( p, target, up );
 }
 

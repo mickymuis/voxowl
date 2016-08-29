@@ -49,6 +49,13 @@ void PerformanceCounter::printAll( std::ostream& str ) {
 
 }
 
+void PerformanceCounter::resetAll( ) {
+    map_t::iterator it;
+    for( it = counters.begin(); it != counters.end(); it++ )
+        it->second->reset();
+
+}
+
 void PerformanceCounter::cleanup() {
     map_t::iterator it;
     for( it = counters.begin(); it != counters.end(); it++ ) {

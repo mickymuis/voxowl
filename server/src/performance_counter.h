@@ -16,7 +16,7 @@ class PerformanceCounter {
         inline int count() const { return m_count; }
         inline float mean() const { return m_mean; }
         inline float min() const { return m_min; }
-        inline float man() const { return m_max; }
+        inline float max() const { return m_max; }
         inline std::string unitName() const { return m_unit_name; }
         inline std::string description() const { return m_description; }
 
@@ -29,6 +29,7 @@ class PerformanceCounter {
         static void update( const std::string& key, float value );
 
         static void printAll( std::ostream& );
+        static void resetAll();
 
         static void cleanup();
 

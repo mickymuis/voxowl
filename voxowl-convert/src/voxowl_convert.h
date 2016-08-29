@@ -21,6 +21,7 @@ typedef struct {
     bool                silent;
     bool                verify;
     bool                set_baselevel_bitmap;
+    bool                set_step_blockwidth;
     int                 set_blockwidth;
     int                 set_rootwidth;
     int                 set_quality;

@@ -32,6 +32,7 @@ voxelmapOpenMapped( voxelmap_mapped_t* vm, const char* filename ) {
     size_t len =vm->header.data_start + vm->header.data_length;
 
     vm->mapped_addr =(caddr_t)mmap( (caddr_t)0, len, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0 );
+    madvise( vm->mapped_addr, len, MADV_RANDOM );
 
     if( vm->mapped_addr == (caddr_t)-1 ) {
         close( fd );

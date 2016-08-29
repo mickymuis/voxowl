@@ -30,8 +30,15 @@ typedef struct {
     svmm_level_devptr_t level_ptr;
 } svmipmapDevice_t;
 
+typedef struct {
+    int levels;
+    svmm_level_t *level_ptr;
+    svmm_level_devptr_t level_devptr;
+} svmipmapHost_t;
+
 VOXOWL_DEVICE void svmmRaycast( fragment_t&, svmipmapDevice_t *v, box_t&, ray_t&, glm::vec3&,
         /* glm::vec3&,*/ float &fragment_width, const float& fragment_width_step ); 
 
-VOXOWL_HOST cudaError_t svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm );
+VOXOWL_HOST cudaError_t svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm, svmipmapHost_t* svmm_host );
+VOXOWL_HOST cudaError_t svmmFreeDevice( svmipmapHost_t* svmm_host );
 

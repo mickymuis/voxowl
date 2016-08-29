@@ -26,7 +26,7 @@ encodeBlock( voxelmap_t *dst,
     int count =0;
     float alpha_count =0.f;
     glm::vec4 list[size.x*size.y*size.z];
-    glm::vec4 sum;
+    glm::vec4 sum(0), delta_sum(0);
     if( homogeneous ) *homogeneous =true;
     bool convert =src->format != dst->format;
 
@@ -37,7 +37,8 @@ encodeBlock( voxelmap_t *dst,
                 glm::vec4 rgba =voxelmapUnpack( src, ivec3_32( x, y, z ) );
                 list[count++] =rgba;
                 alpha_count += (rgba.a > 0.001f);
-                sum += rgba;
+                sum += rgba * (float)(rgba.a > 0.001f);
+                delta_sum += rgba;
 
                 if( bitsPerVoxel( dst->format ) == 1 )
                     voxelmapPack( dst, ivec3_32( x - offset.x, y - offset.y, z - offset.z ), glm::vec4( rgba.a >= .001f ) );
@@ -74,14 +75,20 @@ encodeBlock( voxelmap_t *dst,
             }
     
     // Calculate the average
-    glm::vec4 avg =glm::vec4( sum / (float)count );
+    glm::vec4 avg =glm::vec4( delta_sum / (float)count );
    
     for( int i =0; i < count; i++ ) {
          // A block is homogeneous if all its voxels differ no more
          // than delta from the average
-         if( homogeneous && *homogeneous )
+         if( homogeneous && *homogeneous ) {
             *homogeneous =*homogeneous && 
-                glm::all( glm::lessThanEqual ( glm::abs( list[i] - avg), glm::vec4( opts->delta ) ) );
+                //glm::all( glm::lessThanEqual ( glm::abs( list[i] - avg), glm::vec4( opts->delta ) ) );
+                (glm::distance( list[i], avg ) <= opts->delta);
+/*            printf( "(%f,%f,%f,%f) and (%f,%f,%f,%f) distance: %f\n", 
+                    list[i].r, list[i].g, list[i].b, list[i].a,
+                    avg.r, avg.g, avg.b, avg.a,
+                    glm::distance( list[i], avg ) );*/
+        }
 
     }/*for( int z =offset.z; z < size.z + offset.z && z < src->size.z; z++ )
         for( int y =offset.y; y < size.y + offset.y && y < src->size.y; y++ )
@@ -175,7 +182,7 @@ encodeLevel( svmipmap_t * m,
     uint32_t level_offset =0;
 
     for( int z=0; z < blockgroup_count.z; z++ ) {
-        printf( "Writing Z-Blockgroup %d\n", z );
+        printf( "(%d) ", z );
         for( int y=0; y < blockgroup_count.y; y++ ) {
             for( int x=0; x < blockgroup_count.x; x++ ) {
                 uint32_t blockgroup_level_offset =level_offset;
@@ -310,7 +317,7 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
         
         svmm_level_header_t *lheader =(svmm_level_header_t*)(m->data_ptr + level_begin);
         memset( lheader, 0, sizeof( svmm_level_header_t ) );
-
+        
         int block_count =0;
         // Encode the current mipmap level into blocks
         voxelmap_t *parent =encodeLevel( m, 
@@ -332,10 +339,6 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
         lheader->mipmap_factor =mipmap_factor;
         lheader->block_count =block_count;
         
-        if( v != uncompressed ) {
-            //voxelmapFree( v );
-            free( v );
-        }
         noffset =data_offset - level_begin;
         //fprintf( stderr, "noffset: %d, data offset: %d\n", noffset, level_begin );
 
@@ -348,22 +351,29 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
         mipmap_factor *= blockwidth;
         if( opts.shiftBlockwidth )
             blockwidth = blockwidth << 1;
+        
+        if( v != uncompressed ) {
+            voxelmapFree( v );
+            free( v );
+        }
         v =parent;
     }
 
     // Write the top/root level
     // 'v' should now contain the root-level voxelmap
-    svmm_level_header_t *rootheader =(svmm_level_header_t*)(m->data_ptr + data_offset);
-    rootoffset =data_offset;
-    data_offset += sizeof( svmm_level_header_t );
     
     voxelmap_t rootmap;
     rootmap.format =opts.format;
     rootmap.size =v->size;
     rootmap.blocks =blockCount( rootmap.format, v->size );
+    
+    ensureSize( m, data_offset + voxelmapSize( &rootmap ) );
+
+    svmm_level_header_t *rootheader =(svmm_level_header_t*)(m->data_ptr + data_offset);
+    rootoffset =data_offset;
+    data_offset += sizeof( svmm_level_header_t );
     rootmap.data =m->data_ptr + data_offset;
 
-    ensureSize( m, data_offset + voxelmapSize( &rootmap ) );
     // Set the offset to the next level
     memset( rootheader, 0, sizeof( svmm_level_header_t ) );
     rootheader->next =noffset; // may be zero if only one level is present
@@ -376,7 +386,7 @@ svmmEncode( svmipmap_t* m,  voxelmap_t* uncompressed, svmm_encode_opts_t opts )
     data_offset += voxelmapSize( &rootmap );
 
     if( v != uncompressed ) {
-//        voxelmapFree( v );
+        voxelmapFree( v );
         free( v );
     }
 
@@ -433,6 +443,7 @@ svmmEncodeFile( const char* filename, voxelmap_t* uncompressed, svmm_encode_opts
     ftruncate( fd, data_size );
 
     caddr_t addr =(caddr_t)mmap( (caddr_t)0, vm_max, PROT_READ|PROT_WRITE, MAP_FILE | MAP_SHARED, fd, 0 );
+    madvise( addr, vm_max, MADV_RANDOM );
 
     if( addr == (caddr_t)-1 ) {
         close( fd );
@@ -469,30 +480,38 @@ svmmSetOpts( svmm_encode_opts_t *opts,
              int quality ) {
     opts->blockwidth =2;
     opts->rootwidth =24;
-    switch( uncompressed->format ) {
+    opts->format =svmmFormat( uncompressed->format );
+    opts->delta =1.f - (float)quality / 100.f;
+    opts->bitmapBaselevel =true;
+    opts->shiftBlockwidth =false;
+}
+
+VOXOWL_HOST 
+voxel_format_t 
+svmmFormat( voxel_format_t f ) {
+    voxel_format_t sf;
+    switch( f ) {
         case VOXEL_RGBA_UINT32:
         case VOXEL_RGB24A3_UINT32:
-            opts->format =VOXEL_RGB24A3_UINT32;
+            sf =VOXEL_RGB24A3_UINT32;
             break;
         case VOXEL_RGB24_8ALPHA1_UINT32:
         case VOXEL_RGB24A1_UINT32:
-            opts->format =VOXEL_RGB24A1_UINT32;
+            sf =VOXEL_RGB24A1_UINT32;
             break;
         case VOXEL_INTENSITY8_UINT16:
         case VOXEL_INTENSITY8_8ALPHA1_UINT16:
         case VOXEL_INTENSITY_UINT8:
         case VOXEL_BITMAP_UINT8:
-            opts->format =VOXEL_INTENSITY8_UINT16;
+            sf =VOXEL_INTENSITY8_UINT16;
             break;
         case VOXEL_DENSITY8_UINT16:
         case VOXEL_DENSITY8_8ALPHA1_UINT16:
         case VOXEL_DENSITY_UINT8:
-            opts->format =VOXEL_DENSITY8_UINT16;
+            sf =VOXEL_DENSITY8_UINT16;
             break;
     }
-    opts->delta =0.5f - (float)quality / 200.f;
-    opts->bitmapBaselevel =true;
-    opts->shiftBlockwidth =false;
+    return sf;
 }
 
 VOXOWL_HOST 
@@ -533,6 +552,7 @@ svmmOpenMapped( svmipmap_t* svmm, const char *filename ) {
     size_t len =svmm->header.data_start + svmm->header.data_length;
 
     svmm->data_ptr =(char*)mmap( (caddr_t)0, len, PROT_READ, MAP_SHARED, fd, 0 );
+    madvise( svmm->data_ptr, len, MADV_RANDOM );
 
     if( svmm->data_ptr == (char*)-1 ) {
         close( fd );

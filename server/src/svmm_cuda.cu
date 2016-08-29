@@ -36,7 +36,7 @@ calcGridSize( uint32_t block_count ) {
     
     uint32_t x, y, z;
     uint32_t f =(int32_t)std::cbrt( (float)block_count );
-    x =y =p2( f ) >> 1;
+    x =y =p2( f );// >> 1;
     uint32_t g =x*y;
     z = block_count/g;
     if( block_count % g )
@@ -135,6 +135,7 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
     int level =0;
     glm::vec4 vox;
     glm::ivec3 abs_index, parent_abs_index, block_index, block_offset, subblock_index, grid_offset, voxel_index;
+    glm::vec4 parent_rgba;
     uint32_t block_num =0;
     uint32_t vox_raw;
     
@@ -159,7 +160,7 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
         //if( level == 0 )
         //    root_index = abs_index;
         // Relative position in the block
-        block_index =abs_index % cur_level->blockwidth;
+        block_index =abs_index & (cur_level->blockwidth - 1);
         // The block is devided in subblocks: calculate the offset within the subblock
         block_offset = glm::ivec3( block_index.x & 0x1 ? 1 : 0,
                                    block_index.y & 0x1 ? 1 : 0,
@@ -196,7 +197,8 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
                 break;
             case VOXEL_BITMAP_UINT8: {
                 glm::vec4 alpha =voxelTex3D( cur_level->texture, cur_level->format, voxel_index );
-                vox.a =alpha.a;
+                //vox.a =alpha.a;
+                vox =parent_rgba * alpha;
                 break;
             }
             default:
@@ -213,6 +215,7 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
             level++;
             cur_level++;
             parent_abs_index = abs_index;
+            parent_rgba = vox;
             continue;
         }
         
@@ -264,6 +267,7 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
 
             boxDist += deltaDist * multi_step;
             position_vs += step * multi_step;
+            fragment_width += fragment_width_step * glm::length( deltaDist * multi_step );
         }
 
         // One simple DDA step
@@ -271,10 +275,11 @@ svmmRaycast( fragment_t &frag, svmipmapDevice_t *v, box_t &b, ray_t &r, glm::vec
         b1= glm::lessThanEqual( boxDist, glm::vec3( boxDist.z, boxDist.x, boxDist.y ) );
         mask =glm::vec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );
 
-        side = glm::dot( box_plane, mask );
+//        side = glm::dot( box_plane, mask );
         boxDist += deltaDist * mask;
         position_vs += step * mask;
-*/
+        fragment_width += fragment_width_step * glm::length( deltaDist * mask );*/
+
 /*        glm::vec3 stepToParentBoundary( 
                 .5f * glm::vec3( cur_level->mipmap_factor-1 ) + .5f * step * glm::vec3( cur_level->mipmap_factor-1 )
                 - step * glm::vec3( glm::ivec3( position_vs ) & (cur_level->mipmap_factor-1 ) ) );
@@ -486,7 +491,7 @@ svmmRaycast( svmipmapDevice_t* v, const ray_t& r ) {
 
 VOXOWL_HOST 
 cudaError_t 
-svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm ) {
+svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm, svmipmapHost_t* svmm_host ) {
     char *data_ptr =svmm->data_ptr;
     d_svmm->size =glm_ivec3_32( svmm->header.volume_size );
     
@@ -507,7 +512,9 @@ svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm ) {
     data_ptr +=svmm->header.root;
     svmm_level_header_t* lheader =(svmm_level_header_t*)data_ptr;
     
-    svmm_level_t level[d_svmm->levels];
+    //svmm_level_t* level = (svmm_level_t*)malloc( sizeof( svmm_level_t*) * d_svmm->levels );
+    //svmm_level_t level[d_svmm->levels];
+    svmm_level_t* level =new svmm_level_t[d_svmm->levels];
     svmm_level_t* cur_level =0;
         
     for( int i =0; i < d_svmm->levels; i++ ) {
@@ -577,8 +584,8 @@ svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm ) {
 
         // Copy the block data
 
-        int bytes_per_block =voxelmapSize( cur_level->format, ivec3_32( cur_level->blockwidth ) );
-        int bytes_per_row;
+        size_t bytes_per_block =voxelmapSize( cur_level->format, ivec3_32( cur_level->blockwidth ) );
+        size_t bytes_per_row;
         cudaExtent extent;
         
         if( i == 0 ) { // Root level
@@ -591,7 +598,7 @@ svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm ) {
             bytes_per_row =cur_level->texels_per_blockwidth * bytesPerBlock( cur_level->format );
         }
         
-        for( int block =0; block < cur_level->block_count; block++ ) {
+        for( size_t block =0; block < cur_level->block_count; block++ ) {
             glm::ivec3 grid_pos = gridOffset( cur_level, block ) * cur_level->texels_per_blockwidth;
 /*            printf( "Writing block %d to grid position (%d,%d,%d), grid size (%d,%d,%d)\n", 
                     block, grid_pos.x, grid_pos.y, grid_pos.z,
@@ -607,7 +614,7 @@ svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm ) {
             copyParams.dstPos.z   = grid_pos.z;
             copyParams.extent   = extent;
             copyParams.kind     = cudaMemcpyHostToDevice;
-            RETURN_IF_ERR( cudaMemcpy3DAsync(&copyParams) );
+            RETURN_IF_ERR( cudaMemcpy3D/*Async*/(&copyParams) );
         }   
         // Prepare for the next level
         data_ptr -= lheader->next; // Jump to the next level is negative
@@ -620,6 +627,28 @@ svmmCopyToDevice( svmipmapDevice_t* d_svmm, svmipmap_t* svmm ) {
                                level, 
                                d_svmm->levels*sizeof( svmm_level_t ), 
                                cudaMemcpyHostToDevice ) );
+
+    // Store pointers for bookkeeping
+
+    svmm_host->level_ptr =level;
+    svmm_host->levels =d_svmm->levels;
+    svmm_host->level_devptr = d_svmm->level_ptr;
+
+    return (cudaError_t)0;
+}
+
+VOXOWL_HOST 
+cudaError_t 
+svmmFreeDevice( svmipmapHost_t* svmm_host ) {
+    for( int i =0; i < svmm_host->levels; i++ ) {
+        svmm_level_t *level =&svmm_host->level_ptr[i];
+
+        RETURN_IF_ERR( cudaDestroyTextureObject( level->texture ) );
+        RETURN_IF_ERR( cudaFreeArray( level->data_ptr ) );
+    }
+
+    RETURN_IF_ERR( cudaFree( svmm_host->level_devptr ) );
+    free( svmm_host->level_ptr );
 
     return (cudaError_t)0;
 }

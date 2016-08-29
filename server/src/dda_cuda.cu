@@ -157,14 +157,14 @@ voxelmapRaycast( fragment_t &frag, voxelmapDevice_t *v, box_t &b, ray_t &r, glm:
         glm::vec4 vox = voxelTex3D( v->texture, v->format, glm::ivec3( position_vs ) );
         frag.color =blendF2B( vox, frag.color );
 
-        if( vox.a > 0.1f && !frag.hit ) {
+        if( vox.a > 0.001f && !frag.hit ) {
             // We calculate the position in unit-cube space..
             frag.position =position_vs / (float)largest - b.max;
             // ..and the normal of the current 'face' of the voxel
             frag.normal[side] = -step[side];
             frag.hit =true;
         }
-        if( frag.color.a < 0.1f )
+        if( frag.color.a < 0.001f )
             break;
 
 
