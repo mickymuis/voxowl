@@ -1,0 +1,41 @@
+\chapter{Evaluation}  \label{ch:evaluation}
+%
+In order to determine the effectiveness of the SVMM algorithm as well as to establish a comparison with other methods, it was subjected to an empirical evaluation. Our experimental implementation consists of the work flow mentioned in Section \ref{ch:inducement}, including the networking part. The server was deployed on a large multi-cpu machine with 20 Intel Xeon E5-2650v3s, multiple video cards and 128 Gb of RAM. The renderer itself was tested on a Nvidia Geforce GTX Titan X with 12 Gb of VRAM. The client software ran on a recent MacBook Pro, either connected through the internet or through a high-speed university network.
+
+Like the rest of this thesis, we decided to focus primarily on the efficiency of the SVMM encoding/decoding. Because of this and the fact that the network code is not mature enough at the time of writing, our evaluation only includes results from the SVMM tests. In these experiments, the goal was to assess its practical use given the following questions:
+\begin{itemize}
+\item Can a sufficient compression ratio be achieved to store a large voxelmap ($2048^3$) on a single GPU?
+\item Is the rendering performance comparable to a non-compressed voxelmap?
+\item How does compression ratio and performance compare to a basic SVO?
+\item What is the influence of the parameters of the SVMM encoder on performance and size?
+\end{itemize}
+%
+\section{Test data}
+%
+Three data sets were used to create the test groups: a procedurally generated \emph{Menger sponge} (\texttt{menger}), a microscopic scan of a zerbrafish (\texttt{fish}) and a microscopic scan of a fish eye (\texttt{eye}). Both \texttt{fish} and \texttt{eye} are in \texttt{DENSITY8} format. The \texttt{DENSITY8} voxel format is an 8 bit grayscale format where the intensity $\gamma$ also determines the alpha channel in $\mathrm{rgba} = (\gamma, \gamma, \gamma, \gamma)$. The Menger sponge was generated at multiple levels, colored with a RGB gradient and stored uncompressed to disk, in order to be able to compare it with the other data sets. All three sets were converted to a common uncompressed datastructure first. Additional details about the sets can be found in Table \ref{tab:sizes}.
+%
+%
+\section{Test groups and measurements}
+%
+To serve as a reference, all thee data sets were tested in two reference conditions: completely uncompressed (original data) and loss-less compressed using an `SVO'. The latter condition was created by using the SVMM decoder with the parameters $w=2,r=2,\delta=0$. While this is perhaps not a true SVO (more a SVO-MIP map hybrid), it does create $2^2$-sized octree blocks, a comparable tree-depth and no additional compression. The data was rendered automatically using simulated user input: rotate the camera once, zoom all the way in and all the way out. 94 frames of $1920 \times 1080$ were rendered for each separate condition.
+
+The SVMM test groups consists of SVMM files compressed to disk with varying parameters to the encoder. The following parameters were used:
+\begin{itemize}
+\item Equal blockwidth for all levels of $w=4$ and $w=8$
+\item Root width of $r=8$, $r=32$ and $r=128$ (if applicable)
+\item One of `high' quality and one of `low' quality (dependent on test data, determined individually)
+\item Different blockwidths for each level: level 0 being $w=2$, level $n-1$ being $w=2^n$ (denoted as $w=0$ in the results)
+\end{itemize}
+%
+In addition to the test parameters listed above, the effect of block compression on the base level (as discussed in Section \ref{sec:compression}) was evaluated. A very basic scheme was used were groups of $2^3$ voxels are compressed to a bitmap (more specifically, to a 8 bit integer) and their color is determined by one collective RGB8 or DENSITY8 value (see Figure \ref{fig:block_bitmap}).  Arguably, a more sophisticated encoding such as S3TC could be used, but for our prime interests (size and performance) this would not make a difference.
+
+For the evaluation of performance, three magnitudes of measurement were selected: compression ratio, GPU memory usage and time to render one frame (average, min, max). For the latter we strictly measured the time it took to run the raycast kernel. The transfer of the volume to the GPU, the post-processing filters and the read-out of the framebuffer are not included in this figure. To put this timing in perspective, a frames-per-second based on the \emph{total} rendering time is also included.
+
+Rounded averages were used to determined the render time for a single frame. To this end, CUDA's internal `event' measurement functions were used as they provide up to nanosecond precision and are specifically tailored to the use with CUDA kernels. All timings were performed by rotating the camera once around the data set and then zooming the camera in all the way and back again. 
+%
+\section{Results}
+%
+Table \ref{tab:results} shows the results from every test group. For the sake of brevity, in the SVMM group only the `best' results and their parameters are shown. This `best' result was determined by only looking at the high-quality ($q \geq 80$) samples, while trying to balance size and performance. In Figure \ref{fig:results-time-ratio}, however, all parameter combinations were plotted against the two main measurements of performance (time and ratio). The points in the diagrams are labelled with the parameter triplets in the form $(w,r,q)$. Where $w=0$ is written, we mean that a stepped blockwidth was using (starting at $w=2$ steps in powers of two for each next level). Figures are provided for each data set.
+
+Figure \ref{fig:depth-performance} shows the number of mipmap level against the raycast time. In order to investigate a possible trend, a curve was fitted using Non-Linear Least Squares fitting. The Figure shows only the \texttt{menger} sets as the \texttt{fish} and \texttt{eye} sets did not show such behaviour.
+

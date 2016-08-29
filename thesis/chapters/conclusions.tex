@@ -1,0 +1,64 @@
+\chapter{Discussion} \label{ch:discussion}
+%
+From the results can be seen that SVMM can offer a substantial rate of compression, while limiting the amount of used mipmap levels. When compared to uncompressed voxelmaps, both performance improve and size is reduced by at least 50\%. The increase of speed could be explained by the skipping of empty space and the use of camera distance to determine level-of-detail. The performance improved slightly with the larger sets, and in addition, the very large set cannot even be rendered at all when not in some way compressed. For really large volumes of $2048^3$ and over, there is currently no other way to utilize a single GPU with any means of compression. The proposed algorithm provides a very adequate performacne here.
+
+Compared to our `SVO' it can be concluded that SVMM offers better raycast performance while SVO offers slightly superior loss-less compression ratios. The prime reason for this is that the blockwidth of 2 provides smaller blocks which lead to more compression, but also to deeper trees. Finding the `neighboring voxel' is the most time consuming part of the raycaster. When using an (simplified) octree, this problem has a complexity of $\mathrm{log} \ n$ as a function of the depth of the tree. Thus reducing this depth can, in whatever way, greatly improve performance.
+
+There are other ways to improve performance without reducing the depth of octree. For example, Gobbetti et al. \cite{gobbetti08} use a spatial index structure to precalculate every voxel's neighbors. This method would use slightly more GPU memory but also significantly increase the complexity of the encoder, which may or may not be desireable for a certain application. We believe, however, that the slightly worse efficiency of the SVMM loss-less compression performance can be offset by the fact that our algorithm can use lossy compression to enhance the compression ratio significantly.
+
+When block compression is enabled, the ratios improve significantly: up to 100:3 depending on the data. Fortunately, the currently employed compression scheme does not seem to add any performance penalty. It would be interesting to see if this also hold for more sophisticated schemes.
+
+It should probably be noted that the render times are largely similar in all data sets. This result cannot be entirely natural, as the raycast performance is mainly dependend on the size of the data. Two explanations can be offered: both \texttt{fish} and \texttt{eye} are very shallow in one direction, therefore raytraversal terminates quickly. Secondly, something similar could be said about the \texttt{menger} sets: roughly $\frac{2}{3}$ of the surface of the Menger-sponge is simply a cube. On these portions, raycasting terminates immediately, dramatically influencing the mean render time. Further study should therefore be done using different data sets.
+%
+\section{Tested parameters}
+%
+Judging from Table \ref{tab:results} and Figure \ref{fig:results-time-ratio}, it is hard to predict the effectiveness of a set of parameters. For example, by changing the block width by one step, can have a profound effect on the final size. Moreover, parameters that work on one data set, result in less-than-optimal compression in others. A trend can be discovered, however, by comparing the optimal results from Table \ref{tab:results}. The following statements about possible correlations can be made:
+\begin{itemize}
+\item Stepped blockwidth ($w=2,4,16,32$ etc.) appears to have the best result for non-block compressed samples in every case
+\item The larger models seem to benefit from an increased $r$
+\item For the block-compressed samples, no correlation between $w$ and the final ratio seems to exist
+\end{itemize}
+It would seem that further research is in order to establish a heuristic for these parameters. Moreover, a larger range of values should be tested.
+%
+\section{Image quality and compression}
+%
+The quality of an image is somewhat subjective and also hard to quantify. When using lossy compression, one may wonder how much of the original data is lost and if this impairs the usability of the visualisation. During the experiments that were conducted, the image quality was carefully evaluated and almost no visible degradation was detected using the parameters in Table \ref{tab:results}. However, an interesting observation can be made from Figure \ref{fig:quality}. The original \texttt{eye} data set can be reduced from 193 Mb to 91 Mb with $q=90$. The loss in detail is minimal. Reducing the size further to 41 Mb by $q=65$, however, significantly deteriorates the image. On the other hand, by applying block compression and using $q=90$, the image is not degraded any further while the size is reduced to only 14 Mb. It seems that on `fragile' data with subtle transitions, such as \texttt{eye}, benefits from block compression are more appearant than those from the MIP map-based compression. We have seem similar results, albeit less pronounced, on the solid geometry of the \texttt{menger} sets.
+%
+\section{Correlation of depth and performance}
+%
+In the introduction we theorized about a possible correlation between the number of mipmap levels (or the depth of the octree) and the raycast performance. As shown in Figure \ref{fig:depth-performance}, this effect appears to exist for the \texttt{menger} data sets. There is, however, too little statistical evidence that such correlation really exists even though the results do point in that direction. The fact that the other two data sets did not show the same behaviour, may be due to the limited resolution of these data sets in one direction. Because of this limited resolution of one axis, the depth in that direction is virtually constant and no correlation could be shown as such.
+%
+\section{Future work} \label{sec:futurework}
+%
+The workflow project as presented is still in its infancy. For example, the tethered rendering part could be a thesis entirely on its own. As far as the rendering and compression part is concerned, there is still much unexplored territory. The following paragraphs provide a brief overview of possible subjects left to pursue.
+%
+\subsection{Out-of-core rendering} \label{sec:spatialregions}
+%
+Out-of-core rendering or streaming is a technique to keep a very small working data set ready on the GPU, while the rest of the volume is kept \emph{out-of-core} on the disk. By identifying the parts that are visible from the current viewpoint, a working set can be transferred from the host to the GPU. In this way, a potentially infinitely large data set could be rendered, provided it is not entirely visible at once. For non-transparent models only a few percent of the voxels is visible at a given time. The works by Gobbetti et al. \cite{gobbetti08} and Crassin \cite{crassin11} have successfully implemented such a system and are probably among the best academic solutions available.
+
+The SVMM algorithm could be modified to support streaming by introducing \emph{spatial regions}. Spatial regions are complete, self contained SVMM datastructures that encode a fraction of the original volume. The root block is augmented with an index to one of these regions. The renderer can request any of these regions from the CPU, up to a certain depth. Therefore, from a large distance many regions will be loaded with little depth, while for a close up few regions will be loaded with full depth. A least-recently-used cache policy could be implemented to asynchronously replace blocks between two frames. Such system a would add some overhead, but also provides a means of rendering extremely big data.
+%
+\subsection{Wavelet compression}
+%
+Wavelet compression, as discussed in Section \ref{sec:transformations}, is a means of lossy compression of blocks of data. It uses a transformation to reduce entropy after which compression can be more effective. Wavelet compression is already used successfully in volume compression, for example by Kim et al.\cite{wavelet99}. While it is not feasible to apply wavelet transformation on an entire volume (it has to be in memory or duplicated on disk), wavelet compression could be used to replace or augment the block compression currently used for our SVMM encoder. 
+%
+\subsection{Segmented raycasting}
+%
+While raycasting is \emph{massively parallel} by nature, the ray traversal algorithm scales poorly on GPU. For example, occlusion culling using early ray termination aborts the traversal at the point where occluded voxels are encountered. While this gives a massive performance improvement on the CPU, threads that abort traversal are simply stalled until the entire warp is finished on the GPU. By traversing a ray in multiple segments, either sequentially or in parallel, the execution time of the whole warp will become shorter, leading to less stalls. We implemented this theory on our raycaster and found only adverse effects on performance. This is probably due to the redundant nature of most of the ray segments. We believe, however, that in future research this method could be perfected up to a point where it actually improves render times. A somewhat similar idea was demonstrated by Stolte et al. \cite{stolte95}, albeit in the pre-GPGPU era.
+%
+\subsection{Rendering by proxy}
+%
+The datastructures used in any volume compression scheme, including our own, are difficult to port to the GPU due to register usage and branching. Moreover, the ray traversal relies heavily on random, non coalesced accesses to global memory, which may well be the Achilles' heel of modern GPUs. Although 3D texture memory alleviates this problem to a large extent, it would also be possible to relocate some of this work to the CPU. Our hypothesis is that by using a bitmapped \emph{proxy} version of the volume and storing the coordinates to the framebuffer instead of the color values, the CPU could be used to fill in the color values in \emph{screen space}. Traversing a bitmapped volume costs significantly less memory and memory accesses. In addition to this, a very simple algorithm can be used to traverse it. The CPU-side `coloring' could be performed asynchronously and by doing this in screen-space, its complexity is greatly reduced. In the meantime, the GPU could already calculate normals, perform SSAO and possibly other filters.
+%
+\section{Conclusion} \label{ch:conclusions}
+%
+We have proposed a datastructure for the lossy compression of volumetric data. These Sparse Voxel MIP Maps (SVMM) are based on a combination of 3D MIP mapping, Sparse Voxel Octrees (SVO) and block compression. This combination enables both lossy compression an support for a variety of voxel formats. By using block sizes that can be individually set per mipmap level, the depth of the `tree' is reduced while storage sacrifices are small. Lossy compression is achieved by removing blocks with little information and by applying additional block compression to the base-level.
+
+Apart from the compression algorithm, a raycast implementation in CUDA was demonstrated to decode and render the datastructure efficiently. In order to utilize the beneficial features of hardware 3D texture units, a block management method was proposed to store the (linear) mipmap levels in separate 3D textures. Furthermore, multiple techniques were introduced that can be used to improve the performance of the baseline raycast algorithm.
+
+We have shown that the proposed algorithm can be used to provide favorable compression ratios (up to 100:3) while remaining good rendering performance. The parameters that lead to these compressions, are still a little unpredictable and benefit from tuning on an individual basis. In comparison to traditional SVOs, SVMM is able to provide a better balance between size, performance and quality. Moreover, for all data sets, the SVMM is faster than its uncompressed counterpart.
+
+The use of block compression seems to be extremely useful on volumetric data. The best compression ratios were achieved with block compression and the image degradation was shown to be minimal. Additionally, block compression gives a very little, if any, reduction of performance of the raycaster.
+
+As stated in the introduction, the rendering and exchange of volumetric data could benefit from a lossy compressed format. SVMM may be a good attempt at this and perhaps, with the adjustments suggested in Section \ref{sec:futurework}, it could very well be a practical option.
+%

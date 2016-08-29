@@ -89,31 +89,48 @@ svmmRaycast( volume_t* v, const ray_t& r, int steps, bool precise ) {
     glm::vec3 rayEntry_vs =(rayEntry + b.max) * largest;
 
     // Calculate the index in the volume by chopping off the decimal part
-    glm::ivec3 index = glm::clamp( 
+/*    glm::ivec3 index = glm::clamp( 
         glm::ivec3( glm::floor( rayEntry_vs ) ) ,
         glm::ivec3( 0 ),
-        glm::ivec3( size.x-1, size.y-1, size.z-1 ) );
+        glm::ivec3( size.x-1, size.y-1, size.z-1 ) );*/
 
-    frag.position_vs = glm::clamp( 
+    /*frag.position_vs = glm::clamp( 
         glm::vec3( rayEntry_vs ) ,
         glm::vec3( 0 ),
-        glm::vec3( size.x-1, size.y-1, size.z-1 ) );
+        glm::vec3( size.x-1, size.y-1, size.z-1 ) );*/
+
+    frag.position_vs =rayEntry_vs;
 
     // Determine the sign of the stepping through the volume
-    glm::ivec3 step = glm::sign( r.direction );
+    glm::vec3 step = glm::sign( r.direction );
 
     // EDIT: mitigate the division-by-zero problem
     glm::bvec3 zeros =glm::equal( r.direction, glm::vec3(0) );
     glm::vec3 direction =glm::vec3(glm::not_(zeros)) * r.direction + glm::vec3(zeros) * glm::vec3(.00000001f); 
     // deltaDist gives the distance on the ray path for each following dividing plane
     glm::vec3 deltaDist =glm::abs( glm::vec3( glm::length( r.direction ) ) / direction );
+    printf( "deltaDist: (%f,%f,%f)\n", 
+            deltaDist.x, deltaDist.y, deltaDist.z );
+    deltaDist *= ((b.max * 2.f) / glm::vec3(size));
+        //glm::vec3 deltaDist =((b.max * 2.f) / glm::vec3(size)) / glm::normalize(direction);
 
     // Computes the distances to the next voxel for each component
-    glm::vec3 boxDist = ( sign( r.direction ) * (glm::vec3(index) - rayEntry_vs)
+    glm::vec3 boxDist = ( sign( r.direction ) * (glm::floor(rayEntry_vs) - rayEntry_vs)
                         + (sign( r.direction ) * 0.5f ) + 0.5f ) * deltaDist;
 
+/*    glm::vec3 ddist;
+    ddist.x =( step.x > 0 ? (glm::floor( rayEntry_vs.x ) + 1.f - rayEntry_vs.x) : (rayEntry_vs.x - glm::floor( rayEntry_vs.x ) ) );
+    ddist.y =( step.y > 0 ? (glm::floor( rayEntry_vs.y ) + 1.f - rayEntry_vs.y) : (rayEntry_vs.y - glm::floor( rayEntry_vs.y ) ) );
+    ddist.z =( step.z > 0 ? (glm::floor( rayEntry_vs.z ) + 1.f - rayEntry_vs.z) : (rayEntry_vs.z - glm::floor( rayEntry_vs.z ) ) );
+
+    glm::vec3 boxDist( deltaDist / ddist );*/
+
+    printf( "deltaDist: (%f,%f,%f)  boxDist: (%f,%f,%f)\n", 
+            deltaDist.x, deltaDist.y, deltaDist.z,
+            boxDist.x, boxDist.y, boxDist.z );
+
     // PLOT
-    _plot_index =newPlot( voxelPx( index ), PLOT_INDEX_COLOR );
+    _plot_index =newPlot( voxelPx( glm::floor( frag.position_vs ) ), PLOT_INDEX_COLOR );
 
     // ABOVE IS THE SAME AS voxelmapRaycast()
     //
@@ -130,12 +147,15 @@ svmmRaycast( volume_t* v, const ray_t& r, int steps, bool precise ) {
     int s;
     for( s =0; s < steps; s++ ) {
 
-        if( glm::any( glm::lessThan( index, glm::ivec3(0) ) ) || glm::any( glm::greaterThanEqual( index, size ) ) )
-            break;
+        glm::ivec3 index =glm::floor( frag.position_vs );
+        
+       // if( glm::any( glm::lessThan( index, glm::ivec3(0) ) ) || glm::any( glm::greaterThanEqual( index, size ) ) )
+       //     break;
         
         cur_level =v->levels;
         level =0;
         //block_num =0;
+        //
 
         while(1) {
             mipmap_size =v->size / cur_level->mipmap_factor; // REDUNDANT
@@ -158,8 +178,6 @@ svmmRaycast( volume_t* v, const ray_t& r, int steps, bool precise ) {
             vox =cur_level->data_ptr[voxel_index.z+voxel_index.y*mipmap_size.z+voxel_index.x*mipmap_size.z*mipmap_size.y];
 
             if( level == v->n_levels-1 || vox & TERMINAL ) {
-                superblock_bounds =abs_index + step;
-                superblock_bounds *= cur_level->mipmap_factor;
                 break;
             }
 
@@ -184,18 +202,55 @@ svmmRaycast( volume_t* v, const ray_t& r, int steps, bool precise ) {
         
 //        plot( &_plot_index, voxelPx( index ) ); // PLOT
         //plotCell( index, HIGHLIGHT, 1 );
-        plotCell( index, HIGHLIGHT2, 1 );
         plotCell( abs_index*cur_level->mipmap_factor, HIGHLIGHT, cur_level->mipmap_factor );
 //        plotCell( superblock_bounds, HIGHLIGHT2, /*cur_level->mipmap_factor*/ 1 );
 
-//        while( !glm::any( glm::equal( index, superblock_bounds ) * glm::bvec3( step ) ) ) {
+
+        glm::vec3 stepToParentBoundary( 
+                .5f * glm::vec3( cur_level->mipmap_factor-1 ) + .5f * step * glm::vec3( cur_level->mipmap_factor-1 )
+                - step * glm::vec3( index & (cur_level->mipmap_factor-1 ) ) );
+
+/*        glm::vec3 minStep( index & (cur_level->mipmap_factor-1) );
+        glm::vec3 maxStep( glm::vec3( cur_level->mipmap_factor-1) - minStep );
+        glm::vec3 stepToParentBoundary(
+                step.x == 1 ? maxStep.x : minStep.x,
+                step.y == 1 ? maxStep.y : minStep.y,
+                step.z == 1 ? maxStep.z : minStep.z );*/
+
+        glm::vec3 distToParentBoundary( stepToParentBoundary * deltaDist );
+
+        glm::vec3 dist( boxDist + distToParentBoundary );
+
+        glm::bvec3 b0= glm::lessThan( dist, dist.yzx() );
+        glm::bvec3 b1= glm::lessThanEqual( dist, dist.zxy() );
+        glm::vec3 mask =glm::ivec3( b0.x && b1.x, b0.y && b1.y, b0.z && b1.z );
+        glm::vec3 mask2 =glm::abs( glm::vec3(1) - mask );
+
+        glm::vec3 sec_dist =glm::vec3( glm::dot( mask, distToParentBoundary ) ) / deltaDist;
+        glm::vec3 multi_step =(sec_dist * mask2) + stepToParentBoundary * mask;
+
+        printf( "step %d: index: (%d,%d,%d) stepToBoundary: (%f, %f, %f) distToBoundary: (%f, %f, %f) multi_step: (%f %f %f)\n",
+                s, 
+                index.x, index.y, index.z, 
+                stepToParentBoundary.x, stepToParentBoundary.y, stepToParentBoundary.z,
+                distToParentBoundary.x,distToParentBoundary.y,distToParentBoundary.z,
+                multi_step.x, multi_step.y, multi_step.z );
+
+//        if( cur_level->mipmap_factor != 1 ) {
+            boxDist += deltaDist * multi_step;
+//        index += step * glm::ivec3(mask);
+            frag.position_vs += step * glm::floor( multi_step ); 
+//            plotCell( glm::floor( frag.position_vs ) , HIGHLIGHT2, 1 );
+//        }
+
 
         // Branchless equivalent for
 /*        for( int i =0; i < 3; i++ ) 
             if( boxDist[side] > boxDist[i] )
                 side =i;*/
         
-        while( glm::all( glm::equal( abs_index, index / cur_level->mipmap_factor ) ) ) {
+        //while( glm::all( glm::equal( abs_index, index / cur_level->mipmap_factor ) ) ) {
+        if( 1 ) {
             glm::vec3 mask;
             if( precise ) {
                 glm::bvec3 b0= glm::lessThan( boxDist, boxDist.yzx() );
@@ -210,21 +265,16 @@ svmmRaycast( volume_t* v, const ray_t& r, int steps, bool precise ) {
             }
             //side = glm::dot( box_plane, mask );
         
-/*        glm::ivec3 mask(0);
-        for( int i =0; i < 3; i++ ) 
-            if( boxDist[side] > boxDist[i] )
-                side =i;*/
-
 //        mask[side]=1;
 
-        /*printf ( "boxdist: %f %f %f mask %f %f %f side %d\n", 
-            boxDist.x, boxDist.y, boxDist.z,  mask.x, mask.y, mask.z, side );*/
+        //printf ( "boxdist: %f %f %f mask %f %f %f side %d\n", 
+        //    boxDist.x, boxDist.y, boxDist.z,  mask.x, mask.y, mask.z, side );
             boxDist += deltaDist * mask;
-            index += step * glm::ivec3(mask);
-            frag.position_vs += step * glm::ivec3(mask);
-            plotCell( index, HIGHLIGHT2, 1 );
+            frag.position_vs += step * mask;
+            //plotCell( index, HIGHLIGHT2, 1 );
         }
   //      plot( &_plot_index, voxelPx( index ) ); // PLOT
+        plotCell( glm::floor( frag.position_vs ) , HIGHLIGHT2, 1 );
 
     }
     return s;

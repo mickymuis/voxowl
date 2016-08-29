@@ -214,7 +214,8 @@ void raycast( volume_t* v, bool precise ) {
     r.direction =unitcubeFromWorld( to, v->size ) - r.origin;
 
     int s =svmmRaycast( v, r, _steps, precise );
-    printf( "\r\tRaycast complete: %d steps taken, max. steps %d", s, _steps );
+   // printf( "\r\tRaycast complete: %d steps taken, max. steps %d", s, _steps );
+    printf( "\n" );
     fflush( stdout );
 
     updateScreen();

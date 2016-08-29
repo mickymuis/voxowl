@@ -1,0 +1,76 @@
+%\usepackage{program}
+%\usepackage{etoolbox}
+%\csundef{proof}
+%\csundef{implies}
+%\csundef{overset}
+%\csundef{lneq}
+\usepackage[left=2cm,right=2cm,top=2cm,bottom=3cm]{geometry}
+\usepackage{emptypage}
+\usepackage{float}
+\restylefloat{table}
+\usepackage{tocloft}
+\usepackage{bold-extra}
+\usepackage{titling}
+\usepackage{amsmath, amssymb, amsthm, amsfonts,amsbsy}
+\usepackage{mathchars, mathtools, mathrsfs}
+\usepackage{array,varwidth}
+\usepackage{parskip}
+\usepackage{graphicx}
+\usepackage{verbatim}
+\usepackage{latexsym}
+\usepackage{setspace}
+\usepackage{mdframed}
+\usepackage[font=small]{caption}
+\usepackage{subcaption}
+\usepackage{color}
+\usepackage{contour}
+\usepackage{placeins}
+\usepackage{cite}
+\usepackage[mathscr]{euscript}
+\usepackage[osf]{mathpazo}
+%\usepackage{pgf}
+%\usepackage{tikz}
+\usepackage{subcaption}
+%\usepackage[]{algorithm2e}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{multicol,etoolbox}
+\usepackage{multirow}
+\usepackage{booktabs}
+%\usetikzlibrary{shapes,backgrounds,calc,arrows}
+\usepackage{listings}% http://ctan.org/pkg/listings
+\lstset{
+  basicstyle=\ttfamily,
+  keywordstyle=\bfseries,
+  mathescape,
+  emph={%  
+     if, fi, do, od, while, then, function, for, vec3, vec2, ivec3, ivec3, voxelmap, ptr, in, arguments, not, average%
+    },
+   emphstyle={\bfseries}%
+}%
+
+\input{blocked.sty}
+\input{uhead.sty}
+\input{boxit.sty}
+\input{icthesis.sty}
+
+\newcommand{\normallinespacing}{\renewcommand{\baselinestretch}{1.5} \normalsize}
+\newcommand{\mediumlinespacing}{\renewcommand{\baselinestretch}{1.2} \normalsize}
+\newcommand{\narrowlinespacing}{\renewcommand{\baselinestretch}{1.0} \normalsize}
+
+\newtheorem{corollary}{Corollary}[section]
+\let\oldcor\corollary
+\renewcommand{\corollary}{\oldcor\normalfont}
+\newtheorem{definition}{Definition}[section]
+\let\olddef\definition
+\renewcommand{\definition}{\olddef\normalfont}
+\newtheorem{theorem}{Theorem}[section]
+\let\oldthm\theorem
+\renewcommand{\theorem}{\oldthm\normalfont}
+\newtheorem{example}{Example}
+\let\oldex\example
+\renewcommand{\example}{\oldex\normalfont}
+
+\newcommand\TODO[1]{\textbf{TODO}: \textit{#1}}
+\newcommand{\bree}[1]{\makebox[4.1cm][l]{#1:}}
+

@@ -58,13 +58,11 @@ updateTexture( SDL_Renderer* render, frame_info_t *frame ) {
 
         int jpegSubsamp, width, height;
 
-        printf ( "decoding jpeg size = %d bytes\n", frame->size );
-
         tjhandle jpegDecompressor = tjInitDecompress();
 
         tjDecompressHeader2(jpegDecompressor, frame->data, frame->size, &width, &height, &jpegSubsamp);
         
-        printf( "decoding  width = %d, height = %d\n", width, height );
+        //printf( "decoding  width = %d, height = %d\n", width, height );
         unsigned char image[width*height*color_components];
         
         tjDecompress2(jpegDecompressor, frame->data, frame->size, image, width, 0/*pitch*/, height, TJPF_RGB, TJFLAG_FASTDCT);
@@ -107,7 +105,8 @@ fetchIncoming( struct voxowl_socket_t *sock, frame_info_t *frame ) {
         char *msg;
         if( voxowl_readline( sock, &msg ) == -1 )
             return -1;
-        printf( "server: %s\n", msg );
+        if( strlen( msg ) != 0 )
+            printf( "server: %s\n", msg );
         free( msg );
     } 
     else if( msg_type == VOXOWL_MODE_DATA ) {
@@ -116,7 +115,7 @@ fetchIncoming( struct voxowl_socket_t *sock, frame_info_t *frame ) {
         if( voxowl_read_frame_header( sock, &header ) == -1 )
             return -1;
 
-        fprintf( stderr, "Receiving frame (%u bytes) %dx%d\n", header.frame_size, header.width, header.height );
+        //fprintf( stderr, "Receiving frame (%u bytes) %dx%d\n", header.frame_size, header.width, header.height );
         
         frame->header =header;
         
@@ -143,9 +142,30 @@ main ( int argc, char **argv ) {
     }
    
     const char* refresh_cmd ="renderer.render()\nframebuffer.write()";
-    const char* rotate_left_cmd ="mengersponge.rotate(0.0, -0.1, 0.0)";
-    const char* rotate_right_cmd ="mengersponge.rotate(0.0, 0.1, 0.0)";
-    
+    const char* rotate_left_cmd ="camera.rotateAround(0.0, -0.1, 0.0)";
+    const char* rotate_right_cmd ="camera.rotateAround(0.0, 0.1, 0.0)";
+    const char* rotate_up_cmd ="camera.rotateAround(0.0, 0.0, -0.1)";
+    const char* rotate_down_cmd ="camera.rotateAround(0.0, 0.0, 0.1)";
+    const char* zoomin_cmd ="camera.translate(0.0, 0.0, 0.1)";
+    const char* zoomout_cmd ="camera.translate(0.0, 0.0, -0.1)";
+    const char* server_stop_cmd ="server.stop()";
+    const char* enable_aa_cmd ="set renderer.featureAA 1";
+    const char* disable_aa_cmd ="set renderer.featureAA 0";
+    const char* enable_ssao_cmd ="set renderer.featureSSAO 1";
+    const char* disable_ssao_cmd ="set renderer.featureSSAO 0";
+    const char* enable_ssna_cmd ="set renderer.featureSSNA 1";
+    const char* disable_ssna_cmd ="set renderer.featureSSNA 0";
+    const char* enable_lighting_cmd ="set renderer.featureLighting 1";
+    const char* disable_lighting_cmd ="set renderer.featureLighting 0";
+
+    const char* load_1_cmd ="volumeloader.open( \"/local/s1407937/data/visoog-density.vxwl\" )";
+    const char* load_2_cmd ="volumeloader.open( \"/local/s1407937/data/visoog-density-svmm90.vxwl\")";
+    const char* load_3_cmd ="volumeloader.open( \"/local/s1407937/data/visoog-density-svmm65.vxwl\" )";
+    const char* load_4_cmd ="volumeloader.open( \"/local/s1407937/data/visoog-density-svmm-bc.vxwl\")";
+    const char* load_5_cmd ="volumeloader.open( \"/local/s1407937/data/menger-5-svmm.vxwl\")";
+
+    bool aa_enabled =false, ssao_enabled =false, ssna_enabled =false, lighting_enabled =false;
+
     frame_info_t frame;
     frame_init( &frame );
     _texture =0;
@@ -182,6 +202,7 @@ main ( int argc, char **argv ) {
 
     SDL_Event e;
     bool quit =false;
+    bool ready_frame =true;
     
     while(!quit) {
             if( voxowl_poll_incoming( &sock ) != 0 ) {
@@ -193,6 +214,7 @@ main ( int argc, char **argv ) {
             if( frame.new ) {
                 updateTexture( render, &frame );
                 renderTexture( render, window );
+                ready_frame =true;
             }
             while (SDL_PollEvent(&e)){
                     if (e.type == SDL_QUIT){
@@ -205,17 +227,150 @@ main ( int argc, char **argv ) {
                                             quit = true;
                                             break;
                                     case SDLK_r: {
-                                            voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_s: {
+                                            voxowl_sendline( &sock, server_stop_cmd, strlen( server_stop_cmd ) );
                                             break;
                                     }
                                     case SDLK_LEFT: {
-                                            voxowl_sendline( &sock, rotate_left_cmd, strlen( rotate_left_cmd ) );
-                                            voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, rotate_left_cmd, strlen( rotate_left_cmd ) );
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
                                             break;
                                     }
                                     case SDLK_RIGHT: {
-                                            voxowl_sendline( &sock, rotate_right_cmd, strlen( rotate_right_cmd ) );
-                                            voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, rotate_right_cmd, strlen( rotate_right_cmd ) );
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_UP: {
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, rotate_up_cmd, strlen( rotate_up_cmd ) );
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_DOWN: {
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, rotate_down_cmd, strlen( rotate_down_cmd ) );
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_a: {
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, zoomin_cmd, strlen( zoomin_cmd ) );
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_z: {
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, zoomout_cmd, strlen( zoomout_cmd ) );
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_1: {
+                                            if( aa_enabled )
+                                                voxowl_sendline( &sock, disable_aa_cmd, strlen( disable_aa_cmd ) );
+                                            else
+                                                voxowl_sendline( &sock, enable_aa_cmd, strlen( enable_aa_cmd ) );
+                                            aa_enabled =! aa_enabled;
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_2: {
+                                            if( ssao_enabled )
+                                                voxowl_sendline( &sock, disable_ssao_cmd, strlen( disable_ssao_cmd ) );
+                                            else
+                                                voxowl_sendline( &sock, enable_ssao_cmd, strlen( enable_ssao_cmd ) );
+                                            ssao_enabled =! ssao_enabled;
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_3: {
+                                            if( ssna_enabled )
+                                                voxowl_sendline( &sock, disable_ssna_cmd, strlen( disable_ssna_cmd ) );
+                                            else
+                                                voxowl_sendline( &sock, enable_ssna_cmd, strlen( enable_ssna_cmd ) );
+                                            ssna_enabled =! ssna_enabled;
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_4: {
+                                            if( lighting_enabled )
+                                                voxowl_sendline( &sock, disable_lighting_cmd, strlen( disable_lighting_cmd ) );
+                                            else
+                                                voxowl_sendline( &sock, enable_lighting_cmd, strlen( enable_lighting_cmd ) );
+                                            lighting_enabled =! lighting_enabled;
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_6: {
+                                            voxowl_sendline( &sock, load_1_cmd, strlen( load_1_cmd ) );
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_7: {
+                                            voxowl_sendline( &sock, load_2_cmd, strlen( load_2_cmd ) );
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_8: {
+                                            voxowl_sendline( &sock, load_3_cmd, strlen( load_3_cmd ) );
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_9: {
+                                            voxowl_sendline( &sock, load_4_cmd, strlen( load_4_cmd ) );
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
+                                            break;
+                                    }
+                                    case SDLK_0: {
+                                            voxowl_sendline( &sock, load_5_cmd, strlen( load_5_cmd ) );
+                                            if( ready_frame ) {
+                                                ready_frame =false;
+                                                voxowl_sendline( &sock, refresh_cmd, strlen( refresh_cmd ) );
+                                            }
                                             break;
                                     }
                                     default:

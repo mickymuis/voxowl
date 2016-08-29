@@ -1,0 +1,183 @@
+\chapter*{Appendix A - Results}
+\addcontentsline{toc}{chapter}{Appendix A - Results}
+
+\begin{table}[H]
+\begin{tabular}{*{11}{l}}
+\toprule
+\multicolumn{2}{c}{Test group} & \multicolumn{3}{c}{Parameters} & \multicolumn{4}{c}{Results} \\
+\cmidrule(r){1-2}\cmidrule(l){3-6}%\cmidrule(r){7-9}
+Group                   & Data set         & $w$            & $r$            & quality           & Ratio            & Size (GPU)            & Time (raycast)        & Time (total)\\
+\midrule
+\multirow{4}{*}{Uncompressed}
+                            & Fish               &                    &                  &                      & 1:1                     & 346 MB               & 2.098 ms                 & 464 fps \\
+                            & Eye                &                    &                  &                      & 1:1                     & 358 MB              & 2.422 ms                  & 566 fps \\
+                            & Menger-5       &                    &                  &                      & 1:1                     & 228 MB               & 2.180 ms                 & 470 fps \\
+                            & Menger-6       &                    &                  &                      & 1:1                     & 1687 MB             & 3.583 ms                & 298 fps \\
+                            & Menger-7       &                    &                  &                      & 1:1                     & too large             & -                             & -\\
+\midrule
+\multirow{4}{*}{SVO}
+                            & Fish               &                    &                  &                      & 100:22                & 215 MB          & 1.726 ms                    & 578 fps \\
+                            & Eye                &                    &                  &                      & 100:28                & 229 MB         & 1.763 ms                    & 566 fps \\
+                            & Menger-5       &                    &                  &                      & 100:45                & 205 MB          & 3.636 ms                & 281 fps \\
+                            & Menger-6       &                    &                  &                      & 100:33                & 691 MB           & 2.695 ms              & 392 fps \\
+                            & Menger-7       &                    &                  &                      & 100:25                & 11763 MB       & 1.646 ms                & 153 fps \\
+\midrule
+\multirow{4}{*}{SVMM}
+                            & Fish               & 0                 & 32             & 90                 & 100:17                 & 199 MB           & 1.551 ms               & 644 fps \\
+                            & Eye                & 0                 & 8               & 90                 & 100:27                 & 299 MB           & 1.559 ms                   & 639 fps \\
+                            & Menger-5       & 0                  & 32             & 80                & 100:47                 & 198 MB          & 1.539 ms               & 647 fps \\
+                            & Menger-6       & 0                  & 32             & 80                & 100:34                 & 700 MB         & 1.492 ms              & 666 fps \\
+                            & Menger-7       & 0                  & 128           & 80                & 100:25                 & 11915 MB       & 1.513 ms               & 155 fps \\
+\midrule
+\multirow{4}{*}{\begin{varwidth}{5em}SVMM, block encoded\end{varwidth}}
+                            & Fish               & 4                 & 8               &90                  & 100:3                  & 177 MB           & 1.549 ms              & 644 fps \\
+                            & Eye                &8                  &32              &90                  & 100:6                  & 181 MB          & 1.545 ms                & 647 fps \\
+                            & Menger-5       &4                  &32              &80                  & 100:8                  & 175 MB          & 1.496 ms                & 665 fps \\
+                            & Menger-6       &8                  &32              &80                  & 100:6                  & 284 MB          & 1.492 ms                & 666  fps \\
+                            & Menger-7       &4                  &128            &80                  & 100:4                  & 2902 MB        & 1.516 ms                & 155 fps \\
+\bottomrule
+\end{tabular}
+\caption{Results}
+\label{tab:results}
+\end{table}
+
+\clearpage
+
+\begin{figure*}
+\centering
+\begin{subfigure}{.9\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{figures/fish-mm.png} 
+    \caption{The \texttt{fish} data set}
+    \label{fig:dataset-fish}
+\end{subfigure}
+
+\begin{subfigure}{.4\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{figures/eye.png} 
+    \caption{The \texttt{eye} data set}
+    \label{fig:dataset-eye}
+\end{subfigure}
+\begin{subfigure}{.4\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{figures/menger.png} 
+    \caption{The \texttt{menger-6} data set}
+    \label{fig:dataset-menger}
+\end{subfigure}
+
+\caption{Data sets used for evaluation}
+\label{fig:datasets}
+\end{figure*}
+
+\begin{table}
+\centering
+\begin{tabular}{l l l l}
+Set & Volume size & Voxel format & Uncompressed size \\
+\hline \\
+Fish & $3072 \times 1024 \times 72$ & \texttt{DENSITY8} & 163 Mb \\
+Eye & $2048 \times 2048 \times 48$ & \texttt{DENSITY8} & 193 Mb \\
+Menger-5 & $243 \times 243 \times 243$ & \texttt{RGBA32} & 55 Mb \\
+Menger-6 & $729 \times 729 \times 729$ & \texttt{RGBA32} & 1,5 Gb \\
+Menger-7 & $2187 \times 2187 \times 2187$ & \texttt{RGBA32} & 39 Gb
+\end{tabular}
+\caption{Data sets and properties}
+\label{tab:sizes}
+\end{table}
+
+\clearpage
+
+\begin{figure*}[h]
+\centering
+\begin{subfigure}{\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{results/fish-time-ratio.pdf} 
+    \caption{Results for \texttt{fish}}
+    \label{fig:fish-time-ratio}
+\end{subfigure}
+
+\begin{subfigure}{\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{results/eye-time-ratio.pdf} 
+    \caption{Results for \texttt{eye}}
+    \label{fig:eye-ratio}
+\end{subfigure}
+
+\label{fig:results-time-ratio}
+
+\end{figure*}
+
+\clearpage
+\begin{figure*}
+\ContinuedFloat % continue from previous page
+\begin{subfigure}{\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{results/menger-5-ratio.pdf} 
+    \caption{Results for \texttt{menger-5}}
+    \label{fig:menger-5-ratio}
+\end{subfigure}
+
+\begin{subfigure}{\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{results/menger-6-ratio.pdf} 
+    \caption{Results for \texttt{menger-6}}
+    \label{fig:menger-6-ratio}
+\end{subfigure}
+
+\label{fig:results-time-ratio}
+\end{figure*}
+
+\clearpage
+\begin{figure*}
+\ContinuedFloat % continue from previous page
+\begin{subfigure}{\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{results/menger-7-ratio.pdf} 
+    \caption{Results for \texttt{menger-7}}
+    \label{fig:menger-7-ratio}
+\end{subfigure}
+
+\caption{Results per data set}
+\label{fig:results-time-ratio}
+\end{figure*}
+
+\begin{figure}[h]
+\includegraphics[width=\textwidth]{results/depth-performance.pdf} 
+\caption{Number of mipmap levels against raycast time.}
+\label{fig:depth-performance}
+\end{figure}
+
+\clearpage
+
+
+
+\begin{figure*}
+\centering
+\begin{subfigure}{.49\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{results/quality_uncompressed.png} 
+    \caption{Uncompressed}
+    \label{fig:quality1}
+\end{subfigure}
+\begin{subfigure}{.49\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{results/quality_90.png} 
+    \caption{quality 90, no block compression}
+    \label{fig:quality2}
+\end{subfigure}
+
+\begin{subfigure}{.49\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{results/quality_65.png} 
+    \caption{Quality 65, no block compression}
+    \label{fig:quality1}
+\end{subfigure}
+\begin{subfigure}{.49\textwidth}
+\centering
+    \includegraphics[width=\textwidth]{results/quality_90bc.png} 
+    \caption{quality 90 with block compression}
+    \label{fig:quality2}
+\end{subfigure}
+
+\caption{Different degrees of image degradation in a close-up of \texttt{eye}}
+\label{fig:quality}
+\end{figure*}

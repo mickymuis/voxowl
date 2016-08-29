@@ -1,0 +1,8 @@
+\addcontentsline{toc}{section}{Abstract}
+
+\begin{abstract}
+
+Volumetric data is widely used in scientific and medical applications and now also gains popularity in the games and CGI industry, owing to the many advantages it holds over a polygonal representation. Several highly performant discrete raycast algorithms are now available, not in the least thanks to the benefits of GPGPU computing. The large demands on storage and bandwidth, however, may pose a significant limitation on the exchange or (networked) rendering of larger datasets. Despite the fact that there many efficient compression algorithms (mostly based on either Sparse Voxel Octrees (SVO) or Run-Length Encoding (RLE)), almost all of these algorithms are designed to be loss-less, limiting their maximum potential compression ratio. This paper proposes an all-round lossy compression algorithm based on MIP\footnote{MIP, in this context, stands for \emph{multum in parvo} meaning `much in little'} maps, SVOs and block compression. Our algorithm can be used for a variety of applications and voxel formats, both on disk and in memory. It shows a promising compression ratio while maintaining a balanced image quality and traversal speed. Futhermore, an open-source proof-of-concept library is provided as well as a traversal implementation in CUDA.
+
+\end{abstract}
+

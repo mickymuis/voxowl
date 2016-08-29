@@ -127,7 +127,7 @@ voxowl_peek_pktmode( struct voxowl_socket_t* sock, int* mesg_type ) {
         return 0;
     }
     
-    fprintf( stderr, "Magic number: %x match %d\n", peek, peek == VOXOWL_FRAME_MAGIC );
+    //fprintf( stderr, "Magic number: %x match %d\n", peek, peek == VOXOWL_FRAME_MAGIC );
 
     if( peek == VOXOWL_FRAME_MAGIC )
         *mesg_type = VOXOWL_MODE_DATA;
