@@ -15,7 +15,7 @@
 #include "types.h"
 #include "parser.h"
 #include "packetbuffer.h"
-#include "framebuffer.h"
+#include "fbrendertarget.h"
 #include "camera.h"
 #include "raycast_cuda.h"
 #include "mengersponge.h"
@@ -123,11 +123,10 @@ testingMain( int argc, char** argv ) {
     
     Object root("root");
 
-    Framebuffer fb( "framebuffer", &root );
+    FBRemoteTarget fb( "framebuffer", &root );
     fb.setSize( 1920, 1080 );
-    fb.setTarget( Framebuffer::TARGET_REMOTE );
-    fb.setMode( Framebuffer::MODE_JPEG );
-    fb.setPixelFormat( Framebuffer::PF_RGB888 );
+    fb.setMode( CompressedFramebuffer::JPEG );
+    fb.setPixelFormat( Framebuffer::RGB888 );
     fb.setAASamples( 1, 1 );
     fb.setClearColor( glm::vec4( .85f, .84f, .75f, 1.f ) );
     fb.reinitialize();
@@ -156,7 +155,7 @@ testingMain( int argc, char** argv ) {
     fprintf( test.log, "w \tr \tq \tbc \ttime \t\tmin \t\tmax \t\tfps \tratio \tmem \tdepth\n" );
 
     RaycasterCUDA renderer( "renderer", &root );
-    renderer.setFramebuffer( &fb );
+    renderer.setTarget( &fb );
     renderer.setCamera( &camera );
     renderer.enable( Renderer::FEATURE_SSAO );
     test.renderer =&renderer;

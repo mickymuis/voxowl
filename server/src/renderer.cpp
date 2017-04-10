@@ -6,12 +6,12 @@
 
 Renderer::Renderer( const char *name, Object *parent )
     : Object( name, parent ) {
-    fb =NULL;
-    vol =NULL;
-    camera =NULL;
-    features =NULL;
+    target =nullptr;
+    vol =nullptr;
+    camera =nullptr;
+    features =0;
     addProperty( "camera" );
-    addProperty( "framebuffer" );
+    addProperty( "target" );
     addProperty( "volume" );
     addProperty( "featureAA" );
     addProperty( "featureSSAO" );
@@ -30,9 +30,10 @@ Camera*
 Renderer::getCamera() const { return camera; }
 
 void 
-Renderer::setFramebuffer( Framebuffer* f ) { fb =f; }
-Framebuffer* 
-Renderer::getFramebuffer() const { return fb; }
+Renderer::setTarget( RenderTarget* t ) { target =t; }
+
+RenderTarget* 
+Renderer::getTarget() const { return target; }
 
 void
 Renderer::setVolume( Volume* v ) { vol =v; }
@@ -81,17 +82,17 @@ Renderer::callMeta( const std::string& method, const Variant::list& args ) {
 
 bool 
 Renderer::setMeta( const std::string& property, const Variant& value ) {
-    if( property == "framebuffer" ) {
+    if( property == "target" ) {
         Object *obj =value.toObject();
         try {
-            if( typeid(*obj) == typeid(Framebuffer) ) {
+            if( typeid(*obj) == typeid(RenderTarget) ) {
                 //std::lock_guard<std::mutex> lock ( write_lock );
-                setFramebuffer( dynamic_cast<Framebuffer*>(obj) );
+                setTarget( dynamic_cast<RenderTarget*>(obj) );
                 return true;
             }
             else
-                setFramebuffer( 0 );
-        } catch( std::bad_typeid& e ) { setFramebuffer( 0 ); }
+                setTarget( 0 );
+        } catch( std::bad_typeid& e ) { setTarget( 0 ); }
         return false;
     } else if( property == "camera" ) {
         Object *obj =value.toObject();
@@ -138,8 +139,8 @@ Renderer::setMeta( const std::string& property, const Variant& value ) {
 
 Variant 
 Renderer::getMeta( const std::string& property ) const {
-    if( property == "framebuffer" )
-        return getFramebuffer();
+    if( property == "target" )
+        return getTarget();
     else if( property == "camera" )
         return getCamera();
     else if( property == "volume" )

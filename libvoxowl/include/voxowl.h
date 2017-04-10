@@ -62,4 +62,7 @@ struct voxowl_fragment_header_t {
     uint8_t seg_num;            // Sequence number of the entire frame
 };
 
+#define VOXOWL_DEFAULT_WIDTH 800
+#define VOXOWL_DEFAULT_HEIGHT 600
+
 #endif

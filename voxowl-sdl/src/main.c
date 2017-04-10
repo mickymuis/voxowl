@@ -141,7 +141,7 @@ main ( int argc, char **argv ) {
             exit( -1 );
     }
    
-    const char* refresh_cmd ="renderer.render()\nframebuffer.write()";
+    const char* refresh_cmd ="renderer.render()\nframebuffer.synchronize()";
     const char* rotate_left_cmd ="camera.rotateAround(0.0, -0.1, 0.0)";
     const char* rotate_right_cmd ="camera.rotateAround(0.0, 0.1, 0.0)";
     const char* rotate_up_cmd ="camera.rotateAround(0.0, 0.0, -0.1)";

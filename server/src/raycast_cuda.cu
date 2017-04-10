@@ -5,6 +5,7 @@
 #include "performance_counter.h"
 
 #include "framebuffer.h"
+#include "glrendertarget.h"
 #include "volume.h"
 #include "volume_detail.h"
 #include "camera.h"
@@ -730,15 +731,15 @@ bool
 RaycasterCUDA::beginRender() {
 
     
-    if( !getFramebuffer() )
-        return setError( true, "No framebuffer set" );
+    if( !getTarget() )
+        return setError( true, "No render target set" );
     if( !getVolume() || !getVolume()->storageDetail() )
         return setError( true, "No input volume set" );
     if( !getCamera() )
         return setError( true, "No camera set" );
 
-    const int width =getFramebuffer()->getWidth();
-    const int height =getFramebuffer()->getHeight();
+    const int width =getTarget()->getWidth();
+    const int height =getTarget()->getHeight();
     const int ray_segments =1;
     const dim3 blocksize(16, 16);
 
@@ -768,10 +769,10 @@ RaycasterCUDA::beginRender() {
     bool realloc_framebuffer = !framebuffer.color_data 
         || ( framebuffer.fb_d.width != width ) 
         || ( framebuffer.fb_d.height != height )
-        || ( (int)framebuffer.fb_d.format != getFramebuffer()->getPixelFormat() );
+        || ( (int)framebuffer.fb_d.format != getTarget()->getPixelFormat() );
     
-    framebuffer.fb_d.aaXSamples =getFramebuffer()->getAAXSamples();
-    framebuffer.fb_d.aaYSamples =getFramebuffer()->getAAYSamples();
+    framebuffer.fb_d.aaXSamples =getTarget()->getAAXSamples();
+    framebuffer.fb_d.aaYSamples =getTarget()->getAAYSamples();
 
     if( realloc_framebuffer ) { // Reallocate the framebuffer on the device end
         if( framebuffer.color_data )
@@ -781,15 +782,9 @@ RaycasterCUDA::beginRender() {
 
         framebuffer.fb_d.width = width;
         framebuffer.fb_d.height = height;
-        framebuffer.fb_d.format =(voxowl_pixel_format_t)getFramebuffer()->getPixelFormat();
-        framebuffer.fb_d.clear_color =getFramebuffer()->getClearColor();
-
-        int bytes_per_pixel;
-        // TODO: this could use a nice function
-        if( framebuffer.fb_d.format == VOXOWL_PF_RGB888 )
-            bytes_per_pixel =3;
-        else
-            return false;
+        framebuffer.fb_d.format =(voxowl_pixel_format_t)getTarget()->getPixelFormat();
+        framebuffer.fb_d.clear_color =getTarget()->getClearColor();
+        int bytes_per_pixel =getTarget()->bytesPerPixel();
 
         // We allocate one buffer for the color data and optionally another for depth/normal data
         cudaChannelFormatDesc fb_channelDesc = cudaCreateChannelDesc(8,0,0,0,cudaChannelFormatKindUnsigned);
@@ -897,19 +892,28 @@ bool
 RaycasterCUDA::synchronize() {
     // Wait for the running kernel to finish
     //RETURN_IF_ERR( cudaDeviceSynchronize() );
-
-    // Copy the framebuffer to the host
-
-    // TODO: use framebuffer format
-    int bpp =3;
-    void* data_ptr =getFramebuffer()->data();
-    int width =getFramebuffer()->getWidth();
-    int height =getFramebuffer()->getHeight();
-
-
-    RETURN_IF_ERR ( cudaMemcpyFromArray( data_ptr, framebuffer.color_data, 0, 0, width*height*bpp, cudaMemcpyDeviceToHost ) );
     
     cudaEventSynchronize( render_finish );
+
+    // Copy the framebuffer to the host
+    // The render target can be either a framebuffer or an OpenGL texture
+
+    Framebuffer *fb =dynamic_cast<Framebuffer*>(getTarget());
+    GLRenderTarget *gl =dynamic_cast<GLRenderTarget*>(getTarget());
+    if( fb ) { // We use a framebuffer
+        int bpp =fb->bytesPerPixel();
+        void* data_ptr =fb->getBuffer();
+        int width =fb->getWidth();
+        int height =fb->getHeight();
+
+        RETURN_IF_ERR ( cudaMemcpyFromArray( data_ptr, framebuffer.color_data, 0, 0, width*height*bpp, cudaMemcpyDeviceToHost ) );
+    } else if( gl ) { // We already wrote to OpenGL
+
+    }
+    // FIXME: should this call really be placed here?
+    //getTarget()->synchronize();
+
+    
     float ms_raycast, ms_ssao, ms_ssna, ms_aa, ms_lighting;
 
     cudaEventElapsedTime( &ms_raycast, render_begin, ssna_step );

@@ -4,7 +4,7 @@
 #include "object.h"
 
 class Camera;
-class Framebuffer;
+class RenderTarget;
 class Volume;
 
 class Renderer : public Object {
@@ -21,8 +21,8 @@ class Renderer : public Object {
         void setCamera( Camera* );
         Camera *getCamera() const;
 
-        void setFramebuffer( Framebuffer* );
-        Framebuffer* getFramebuffer() const;
+        void setTarget( RenderTarget* );
+        RenderTarget* getTarget() const;
 
         void setVolume( Volume* );
         Volume* getVolume() const;
@@ -47,7 +47,7 @@ class Renderer : public Object {
         std::string err_str;
         bool setError( bool, const std::string& );
         Camera *camera;
-        Framebuffer *fb;
+        RenderTarget *target;
         Volume *vol;
         int features;
 };

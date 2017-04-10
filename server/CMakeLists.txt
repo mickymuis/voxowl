@@ -60,13 +60,17 @@ cuda_add_executable(
     src/network.cpp
     src/server.cpp
     src/parser.cpp
+    src/rendertarget.cpp
+    src/glrendertarget.cpp
     src/framebuffer.cpp
+    src/fbrendertarget.cpp
     src/renderer.cpp
     src/volume_loader.cpp
     src/camera.cpp
     src/actor.cpp
     src/mengersponge.cpp
     src/bmp.cpp
+    src/jpegencoder.cpp
     src/performance_counter.cpp
     src/raycast.cu
     src/raycast_cuda.cu

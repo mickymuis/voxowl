@@ -12,7 +12,7 @@
 #include "types.h"
 #include "parser.h"
 #include "packetbuffer.h"
-#include "framebuffer.h"
+#include "fbrendertarget.h"
 #include "camera.h"
 #include "raycast_cuda.h"
 #include "mengersponge.h"
@@ -81,11 +81,10 @@ main( int argc, char** argv ) {
     Server server( "server", &root );
     PacketBuffer pbuffer;
 
-    Framebuffer fb( "framebuffer", &root );
+    FBRemoteTarget fb( "framebuffer", &root );
     fb.setSize( 1024, 768 );
-    fb.setTarget( Framebuffer::TARGET_REMOTE );
-    fb.setMode( Framebuffer::MODE_JPEG );
-    fb.setPixelFormat( Framebuffer::PF_RGB888 );
+    fb.setMode( CompressedFramebuffer::JPEG );
+    fb.setPixelFormat( RenderTarget::RGB888 );
     fb.setAASamples( 1, 1 );
     fb.setClearColor( glm::vec4( 1.f, 1.f, 1.f, 1.f ) );
     //fb.setClearColor( glm::vec4( .85f, .84f, .75f, 1.f ) );
@@ -104,7 +103,7 @@ main( int argc, char** argv ) {
     }
 
     RaycasterCUDA renderer( "renderer", &root );
-    renderer.setFramebuffer( &fb );
+    renderer.setTarget( &fb );
     renderer.setCamera( &camera );
     renderer.setVolume( &loader );
 
@@ -129,7 +128,7 @@ main( int argc, char** argv ) {
         renderer.setVolume( &volume );*/
 
     /* */
-    uint32_t portnum =5678;
+    uint32_t portnum =6789;
     if( argc > 1 && atoi( argv[1] ) != 0 )
         portnum =atoi( argv[1] );
 
