@@ -1,6 +1,0 @@
-#!/bin/sh
-mkdir build
-cd build
-#export CC=gcc44
-#export CXX=g++44
-cmake .. && echo "Now type 'cd build' and 'make'"

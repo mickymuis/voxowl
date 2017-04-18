@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 2.8)
 
 # Treat CUDA files a regular C++ sources in this case
-list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS cu)
+#list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS cu)
 # .. but because of a bug in CMAKE this doesn't work. hack:
-set(CMAKE_CXX_SYSROOT_FLAG_CODE "list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS cu)")
+#set(CMAKE_CXX_SYSROOT_FLAG_CODE "list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS cu)")
 # .. gcc troubles us as well. Force it to compile .cu files
 #if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  add_definitions("-g -x c++")
+# add_definitions("-g -x c++")
 #endif()
 
 project( voxowl-convert CXX )
@@ -29,6 +29,7 @@ endif()
 include_directories(
     src
     ../libvoxowl/include
+    ../ext/glm
     ${TIFF_INCLUDE_DIR}
     )
 # Specify library paths
@@ -44,10 +45,10 @@ add_executable(
     voxowl-convert
     src/main.cpp
     src/voxowl_convert.cpp
-    ../libvoxowl/src/voxel.cu
-    ../libvoxowl/src/svmipmap.cu
-    ../libvoxowl/src/voxelmap.cpp
-    ../libvoxowl/src/ivec3_32.cu
+    ../libsvmm/src/voxel.cpp
+    ../libsvmm/src/svmipmap.cpp
+    ../libsvmm/src/voxelmap.cpp
+    ../libsvmm/src/ivec3_32.cpp
     )
 
 # For linking ...
